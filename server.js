@@ -52,7 +52,7 @@ if (YOLO_POSE_WS_URL) enableCamera(YOLO_POSE_WS_URL);
 // still adapts to what the user says, it is just not remembered.
 const supabaseConfig = {
   url: process.env.SUPABASE_URL,
-  serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+  serviceKey: process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY,
   userId: process.env.GYM_COACH_USER_ID || "local",
 };
 const injuries = createInjuryStore(supabaseConfig);

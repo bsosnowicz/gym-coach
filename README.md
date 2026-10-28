@@ -65,8 +65,9 @@ Bez `SUPABASE_*` trening działa, tylko niczego nie pamięta między sesjami. Z 
 
 1. Załóż projekt Supabase i uruchom migracje z `supabase/migrations/` (SQL Editor albo
    `supabase db push`): `user_injuries` i `workout_sessions`.
-2. W `.env`: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (tylko serwer), `GYM_COACH_USER_ID`
-   (do czasu logowania jeden użytkownik).
+2. W `.env`: `SUPABASE_URL`, `SUPABASE_SECRET_KEY` (tylko serwer), `GYM_COACH_USER_ID`
+   (do czasu logowania jeden użytkownik). Starszy `SUPABASE_SERVICE_ROLE_KEY` nadal
+   działa, jeśli `SUPABASE_SECRET_KEY` jest pusty. Po zmianie `.env` zrestartuj serwer.
 3. Przy starcie sesji serwer czyta aktywne kontuzje (plan je omija, trener pyta, jak się
    czują) i ostatni trening (trener może do niego nawiązać).
 
