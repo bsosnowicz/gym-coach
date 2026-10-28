@@ -1,11 +1,11 @@
-// Kamera użytkownika: lista urządzeń, zgoda, strumień. Z yoga-startup
-// (public/posture/camera.js) bez MediaPipe i bez DOM-u przycisków: widok
-// (React) sam rysuje przycisk i listę, ten moduł tylko otwiera i zamyka kamerę.
-// Co się dzieje z klatkami — yolo-stream.js i correction-loop.js.
+// The user's camera: devices, permission, stream. From yoga-startup
+// (public/posture/camera.js) without MediaPipe and without driving the DOM:
+// the React view draws the button and the list, this module only opens and
+// closes the camera. Frames go on through yolo-stream.js.
 
-// NotReadableError = przeglądarka widzi kamerę (ma zgodę), ale system nie
-// pozwolił jej otworzyć — najczęściej trzyma ją inny program albo karta, albo
-// przeglądarka próbuje otworzyć zapamiętane, już nieistniejące urządzenie.
+// NotReadableError: the browser has the permission, but the system would not
+// open the camera — usually another program or tab holds it, or the browser
+// tries a remembered device that no longer exists.
 export function describeCameraError(error) {
   if (error.name === "NotAllowedError" || error.name === "PermissionDeniedError")
     return "Brak zgody na kamerę — sprawdź uprawnienia strony w przeglądarce.";
@@ -18,7 +18,7 @@ export function describeCameraError(error) {
   return error.message;
 }
 
-// Nazwy kamer są dostępne dopiero po pierwszej zgodzie; wcześniej puste.
+// Camera names are known only after the first permission; empty before.
 export async function listCameras(mediaDevices = navigator.mediaDevices) {
   const devices = await mediaDevices.enumerateDevices();
   return devices
@@ -26,7 +26,7 @@ export async function listCameras(mediaDevices = navigator.mediaDevices) {
     .map((device, index) => ({ id: device.deviceId, label: device.label || `Kamera ${index + 1}` }));
 }
 
-// videoEl: podgląd; strumień należy do niego, dopóki nie wywołasz stop().
+// videoEl: the preview; it holds the stream until stop().
 export function createCamera(videoEl, { mediaDevices = navigator.mediaDevices } = {}) {
   let stream = null;
 
@@ -37,7 +37,7 @@ export function createCamera(videoEl, { mediaDevices = navigator.mediaDevices } 
   }
 
   return {
-    // deviceId: "" = domyślna kamera.
+    // deviceId: "" is the default camera.
     async start(deviceId = "") {
       stop();
       const constraints = deviceId ? { video: { deviceId: { exact: deviceId } } } : { video: true };

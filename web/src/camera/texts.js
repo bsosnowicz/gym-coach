@@ -1,4 +1,4 @@
-// Napisy modułu kamery; jak session/texts.js, ale osobno, bo cały moduł jest opcjonalny.
+// Texts of the camera module; like session/texts.js, kept apart because the module is optional.
 export const CAMERA_TEXTS = {
   title: "Kamera",
   enable: "Włącz kamerę",
@@ -12,6 +12,7 @@ export const CAMERA_TEXTS = {
   analysing: "Analiza sylwetki działa.",
   noPerson: "Nie widzę sylwetki w kadrze — odsuń się, żeby było widać całe ciało.",
   postureOk: "Postawa bez uwag.",
+  deviation: (label) => `Do poprawy: ${label}.`,
   yoloUnavailable: "Analiza sylwetki niedostępna — widzisz sam podgląd, rozmowa działa normalnie.",
   yoloLost: "Połączenie z analizą sylwetki zerwane — widzisz sam podgląd.",
   failed: (message) => `Kamera: ${message}`,

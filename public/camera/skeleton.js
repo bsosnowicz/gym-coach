@@ -1,6 +1,6 @@
-// Punkty sylwetki z YOLO (COCO-17, współrzędne 0–1 względem klatki) na
-// nakładce nad podglądem. Canvas ma rozmiar natywnej klatki wideo, nie pudełka
-// CSS — inaczej punkty "pływałyby" względem obrazu.
+// Body points from YOLO (COCO-17, 0–1 of the frame) on the overlay above the
+// preview. The canvas has the native video frame size, not the CSS box size,
+// or the points would drift off the image.
 
 export const MIN_KEYPOINT_CONFIDENCE = 0.35;
 
@@ -15,7 +15,7 @@ export const SKELETON_CONNECTIONS = [
   ["left_ear", "left_shoulder"], ["right_ear", "right_shoulder"],
 ];
 
-// Odcinki i punkty do narysowania, w pikselach; czysta funkcja do testów.
+// Segments and points to draw, in pixels; pure, for the tests.
 export function skeletonGeometry(keypoints = [], { width, height, minConfidence = MIN_KEYPOINT_CONFIDENCE }) {
   const visible = new Map(
     keypoints.filter((point) => point.confidence >= minConfidence).map((point) => [point.name, point])
@@ -27,7 +27,7 @@ export function skeletonGeometry(keypoints = [], { width, height, minConfidence 
   return { lines, points: [...visible.values()].map(toPixels) };
 }
 
-// issue: sylwetka z uwagą (pomarańczowa) zamiast bez uwag (niebieska).
+// issue: a body with a deviation (orange) rather than without (blue).
 export function drawSkeleton(ctx, keypoints, { issue = false } = {}) {
   const { width, height } = ctx.canvas;
   ctx.clearRect(0, 0, width, height);
