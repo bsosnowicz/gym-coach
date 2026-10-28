@@ -66,7 +66,7 @@ test("Objętość: serie tygodniowo na główne partie z katalogu", () => {
     { exercises: [{ id: squat.id, sets: 3 }, { id: bench.id, sets: 4 }] },
     { exercises: [{ id: squat.id, sets: 3 }] },
   ], catalog);
-  assert.equal(volume.legs, 6);
+  assert.equal(volume.quads, 6);
   assert.equal(volume.chest, 4);
   assert.equal(volume.back, 0);
 });

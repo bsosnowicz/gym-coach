@@ -14,6 +14,7 @@
 // 5. Intensity sets reps and rest: heavy (strength) 3–6 reps, 2–3 min rest;
 //    moderate (muscle) 8–12 reps, 60–120 s; light (endurance) 15–20 reps, 30–60 s.
 //    Single-joint exercises rest less than multi-joint ones.
+//    A beginner who wants strength starts moderate: technique before load.
 // 6. Every 5th week is lighter (deload): about 60% of the sets.
 
 const SPLITS = {
@@ -93,7 +94,8 @@ const INTENSITIES = {
   light: { name: "lekka", reps: 15, sets: 3, restS: { compound: 60, isolation: 45 } },
 };
 const GOAL_INTENSITY = { strength: "heavy", muscle: "moderate", general: "moderate", endurance: "light" };
-const intensityFor = (goal) => GOAL_INTENSITY[goal] || "moderate";
+// A beginner builds strength with moderate loads first: technique before heavy fives.
+const intensityFor = (goal, level) => (level === "beginner" && goal === "strength" ? "moderate" : GOAL_INTENSITY[goal] || "moderate");
 const restFor = (intensity, mechanic) => INTENSITIES[intensity].restS[mechanic === "isolation" ? "isolation" : "compound"];
 
 // Rule 3: weekly hard sets per major muscle group, by level.
@@ -102,7 +104,9 @@ const WEEKLY_SETS = { beginner: [8, 10], intermediate: [10, 15], expert: [15, 20
 const MAJOR_GROUPS = {
   chest: ["chest"],
   back: ["lats", "middle back"],
-  legs: ["quadriceps", "hamstrings", "glutes"],
+  // Legs as two groups: a squat and a hinge each count once, not three times.
+  quads: ["quadriceps"],
+  posterior: ["hamstrings", "glutes"],
   shoulders: ["shoulders"],
 };
 
