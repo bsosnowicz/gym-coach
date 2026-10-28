@@ -42,6 +42,7 @@ function Now({ plan, progress, restLeft }) {
     return (
       <p className="workout-now">
         <strong>Przerwa {clock(restLeft ?? 0)}</strong>{progress.restPaused ? " (wstrzymana)" : ""} · dalej: {item.name}, {set}{lastText}
+        {progress.adjustQuestion && <><br /><strong>{progress.adjustQuestion}</strong> (powiedz „tak” albo „nie”)</>}
       </p>
     );
   }

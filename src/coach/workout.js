@@ -12,6 +12,15 @@
 // done ("zrobiłem 8" keeps the 8). Stage 05 can drive advance() from YOLO.
 
 const { normalizeWords } = require("../engine/words");
+const { WEIGHT_STEP_KG } = require("./progression");
+
+// A set far off the target says the weight is wrong: ask whether to change it
+// for the next set (the answer comes during the rest, see adjust()).
+const TOO_FEW_REPS = 3;
+const TOO_MANY_REPS = 4;
+// Further off than this: about 10% instead of one step.
+const FAR_OFF_REPS = 5;
+const hasWeight = (item) => Boolean(item.reps) && Boolean(WEIGHT_STEP_KG[item.equipment]);
 
 // Said briefly, these end the current step. Diacritics are stripped (normalizeWords).
 // Prefixes catch what Whisper makes of tired speech: "gotowo", "zrubiona", "skończone".
@@ -79,10 +88,19 @@ const restText = (seconds) => (seconds >= 120 && seconds % 60 === 0 ? `${seconds
 const SAY = {
   warmup: () => "Zaczynamy od rozgrzewki: pięć minut lekkiego ruchu, krążenia ramion i bioder, kilka przysiadów bez obciążenia. Powiedz „gotowe”, kiedy skończysz.",
   // item.progress: what changed since last time (src/coach/progression.js).
+  // item.progress: what changed since last time (src/coach/progression.js); no weight
+  // known yet: how to pick one, and to say it after the set.
   firstSet: (item, number, total) =>
-    `Ćwiczenie ${number} z ${total}: ${item.name}.${item.progress ? ` ${item.progress}` : ""} Seria pierwsza z ${item.sets}, ${target(item)}. Powiedz „gotowe” po serii.`,
-  rest: (item, seconds, next) =>
-    `Seria zaliczona. Przerwa ${restText(seconds)}${next ? `, potem ${next}` : ""}.`,
+    `Ćwiczenie ${number} z ${total}: ${item.name}.${item.progress ? ` ${item.progress}` : ""} Seria pierwsza z ${item.sets}, ${target(item)}.`
+    + (hasWeight(item) && !item.kg
+      ? ` Weź ciężar, z którym zrobisz ${item.reps} powtórzeń z zapasem dwóch, i po serii powiedz, ile było, na przykład „zrobiłem ${item.reps} na 40 kilo”.`
+      : " Powiedz „gotowe” po serii."),
+  adjustDown: (done, item, kg) => `Tylko ${done} z ${item.reps} — ciężar wydaje się za duży. ${kg ? `Zmniejszyć do ${kgText(kg)}` : "Zmniejszyć ciężar"} na następną serię?`,
+  adjustUp: (done, item, kg) => `${done} powtórzeń to sporo. ${kg ? `Zwiększyć do ${kgText(kg)}` : "Zwiększyć ciężar"} na następną serię?`,
+  adjusted: (kg, up) => (kg ? `Dobrze, następna seria na ${kgText(kg)}.` : `Dobrze, weź ${up ? "więcej" : "lżej"} i po serii powiedz, ile było.`),
+  kept: (kg) => (kg ? `Dobrze, zostajemy przy ${kgText(kg)}.` : "Dobrze, zostajemy przy tym ciężarze."),
+  rest: (item, seconds, next, question = "") =>
+    `Seria zaliczona.${question ? ` ${question}` : ""} Przerwa ${restText(seconds)}${next ? `, potem ${next}` : ""}.`,
   nextSet: (item, setIndex) =>
     `Koniec przerwy. ${item.name}, seria ${ORDINAL[setIndex] || setIndex + 1} z ${item.sets}, ${target(item)}.`,
   // Rest over: what comes next, and a question; the set starts on the answer.
@@ -135,7 +153,11 @@ function createWorkoutRunner(plan, {
     attempt();
   }
 
+  // A weight question asked after a set, answered during the rest.
+  let pendingAdjust = null;
+
   function startSet() {
+    pendingAdjust = null;
     progress.phase = "set";
     progress.restEndsAt = null;
     publish();
@@ -156,6 +178,7 @@ function createWorkoutRunner(plan, {
   const READY_REMINDER_MS = 45000;
   let reminderTimer = null;
   function restRunOut() {
+    pendingAdjust = null;
     restTimer = null;
     restRemainingMs = null;
     progress.phase = "ready_set";
@@ -175,11 +198,30 @@ function createWorkoutRunner(plan, {
     publish();
   }
 
+  // The weight for the next set when this one was far off the target, or null.
+  function weightQuestion(item, reps, kg) {
+    if (!hasWeight(item) || reps == null) return null;
+    const down = reps <= item.reps - TOO_FEW_REPS;
+    const up = reps >= item.reps + TOO_MANY_REPS;
+    if (!down && !up) return null;
+    const step = WEIGHT_STEP_KG[item.equipment];
+    const far = Math.abs(reps - item.reps) >= FAR_OFF_REPS;
+    const change = kg ? Math.max(step, far ? Math.round((kg * 0.1) / step) * step : step) : 0;
+    const next = kg ? Math.max(step, kg + (up ? change : -change)) : null;
+    return { up, kg: next, current: kg, text: up ? SAY.adjustUp(reps, item, next) : SAY.adjustDown(reps, item, next) };
+  }
+
   function finishSet(reps, kg) {
     const item = current();
-    progress.completed.push({ id: item.id, set: progress.setIndex + 1, reps: reps ?? item.reps ?? null, seconds: item.seconds ?? null, kg: kg ?? null });
-    record("workout.set_done", { id: item.id, set: progress.setIndex + 1, reps: reps ?? null, kg: kg ?? null });
+    // No weight said: the one planned (or said earlier) — the journal needs it for progression.
+    const weight = kg ?? item.kg ?? null;
+    if (kg) item.kg = kg;
+    progress.completed.push({ id: item.id, set: progress.setIndex + 1, reps: reps ?? item.reps ?? null, seconds: item.seconds ?? null, kg: weight });
+    record("workout.set_done", { id: item.id, set: progress.setIndex + 1, reps: reps ?? null, kg: weight });
     const lastSet = progress.setIndex + 1 >= item.sets;
+    // Only between sets of the same exercise; across sessions progression decides.
+    const question = lastSet ? null : weightQuestion(item, reps, weight);
+    pendingAdjust = question ? { index: progress.exerciseIndex, ...question } : null;
     if (lastSet && progress.exerciseIndex + 1 >= plan.exercises.length) {
       progress.phase = "done";
       progress.restEndsAt = null;
@@ -193,7 +235,7 @@ function createWorkoutRunner(plan, {
     } else {
       progress.setIndex += 1;
     }
-    say(SAY.rest(item, item.restS, lastSet ? current().name : null));
+    say(SAY.rest(item, item.restS, lastSet ? current().name : null, question?.text));
     startRest(item.restS * 1000);
   }
 
@@ -227,6 +269,21 @@ function createWorkoutRunner(plan, {
 
   return {
     progress,
+
+    get pendingAdjust() { return pendingAdjust; },
+
+    // The answer to the weight question: accept changes the weight of the next sets.
+    adjust(accept) {
+      if (!pendingAdjust) return false;
+      const { index, up, kg, current: was } = pendingAdjust;
+      pendingAdjust = null;
+      const item = plan.exercises[index];
+      if (accept && kg) item.kg = kg;
+      record("workout.weight_adjusted", { id: item.id, accepted: accept, kg: accept ? kg : was });
+      say(accept ? SAY.adjusted(kg, up) : SAY.kept(was));
+      publish();
+      return true;
+    },
 
     // The exercise a change ("za ciężko", "nie mam ławki") applies to: the one
     // in progress, or during a rest the one the next set belongs to.
@@ -359,6 +416,7 @@ function createWorkoutRunner(plan, {
         restPaused: progress.phase === "rest" && !progress.restEndsAt,
         completed: progress.completed.length,
         lastSet: progress.completed.at(-1) || null,
+        adjustQuestion: pendingAdjust?.text || null,
       };
     },
   };

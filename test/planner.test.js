@@ -177,3 +177,14 @@ test("Grupa mięśni (test 29.10: „wzmocnienie nóg” dało pompki): focus=le
   assert.match(describePlan(short), /Skupiamy się na: nogi\./);
   assert.equal(parsePlanMarker("goal=strength level=beginner equipment=gym minutes=20 focus=legs").focus, "legs");
 });
+
+test("Ciężar startowy: początkujący przy sztandze — pusta sztanga 20 kg; bez sztangi i bez ciężaru — nic", () => {
+  const beginner = planWorkout(catalog, { goal: "muscle", level: "beginner", equipment: "gym", minutes: 30, focus: "legs" });
+  const barbell = beginner.exercises.find((item) => item.equipment === "barbell");
+  assert.equal(barbell.kg, 20);
+  assert.equal(barbell.progress, "Na początek wystarczy pusta sztanga, 20 kg.");
+  const intermediate = planWorkout(catalog, { goal: "muscle", level: "intermediate", equipment: "gym", minutes: 30, focus: "legs" });
+  assert.ok(intermediate.exercises.every((item) => !item.kg), "średniozaawansowany dobiera sam");
+  const home = planWorkout(catalog, { goal: "general", level: "beginner", equipment: "bodyweight", minutes: 20 });
+  assert.ok(home.exercises.every((item) => !item.kg));
+});

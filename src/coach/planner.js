@@ -89,6 +89,8 @@ function toPlanItem(exercise, { sets, reps, restS }, level) {
     id: exercise.id,
     name: exercise.name,
     pattern: exercise.pattern,
+    // The step of weight changes and whether there is a weight at all (src/coach/workout.js).
+    equipment: exercise.equipment,
     sets,
     ...(STATIC_PATTERNS.has(exercise.pattern)
       ? { seconds: HOLD_SECONDS[level] || HOLD_SECONDS.intermediate }
@@ -197,8 +199,17 @@ function planWorkout(catalog, { goal, level, equipment, minutes, focus = null },
     tired,
     avoid,
     warmup: { durationS: WARMUP_S },
-    exercises: chosen.map((exercise) => applyProgression(toPlanItem(exercise, prescription, level), exercise, history, { hold: tired })),
+    exercises: chosen.map((exercise) => startingWeight(
+      applyProgression(toPlanItem(exercise, prescription, level), exercise, history, { hold: tired }), level)),
   };
+}
+
+// A beginner's first barbell lift: the empty bar is a safe start and a number
+// to say. Other weights the user picks (src/coach/workout.js asks for them).
+const EMPTY_BAR_KG = 20;
+function startingWeight(item, level) {
+  if (item.kg || level !== "beginner" || item.equipment !== "barbell" || !item.reps) return item;
+  return { ...item, kg: EMPTY_BAR_KG, progress: "Na początek wystarczy pusta sztanga, 20 kg." };
 }
 
 const SETS_WORD = (n) => (n === 1 ? "seria" : n < 5 ? "serie" : "serii");

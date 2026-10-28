@@ -172,6 +172,13 @@ function describeProfile(profile, recovery = null) {
 // A short yes to the summary; anything longer or with "nie"/"ale" is a correction for the model.
 const YES_WORDS = new Set(["tak", "dobrze", "ok", "okej", "okay", "jasne", "pewnie", "ukladaj", "zgadza", "pasuje",
   "dawaj", "lecimy", "super", "swietnie", "mozemy", "prosze", "jasne"]);
+// A short no: "nie", "nie trzeba", "zostaw", "zostajemy".
+function noIntent(text) {
+  const words = normalizeWords(text);
+  return words.length > 0 && words.length <= 4
+    && (words[0] === "nie" || words.some((word) => word.startsWith("zostaw") || word.startsWith("zostaj")));
+}
+
 const READY_WORDS = /^(jestem|gotow\w*|dawaj|start|zaczynam\w*|moge|mozemy)( gotow\w*)?$/;
 function yesIntent(text) {
   const words = normalizeWords(text);
@@ -530,6 +537,11 @@ function createCoach({
         return undefined;
       }
       const { runner } = state;
+      // The weight question after a set far off the target: yes / no in code.
+      if (runner?.pendingAdjust) {
+        if (yesIntent(userText)) return runner.adjust(true) && { handled: true };
+        if (noIntent(userText)) return runner.adjust(false) && { handled: true };
+      }
       // After the rest: "tak", "jestem", "dawaj" start the set as well as "gotowe".
       const ready = runner?.progress.phase === "ready_set" && (yesIntent(userText) || READY_WORDS.test(normalizeWords(userText).join(" ")));
       const intent = runner && (advanceIntent(userText) || (ready ? { reps: null, kg: null } : null));

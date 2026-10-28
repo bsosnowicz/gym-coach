@@ -241,3 +241,40 @@ test("Koniec przerwy w rozmowie: „Tak, jestem gotowy” startuje serię bez mo
   runner.stop();
   await endSession(session);
 });
+
+test("Ciężar: pierwsza seria bez ciężaru — jak go dobrać; podany ciężar zostaje roboczy; 4 z 10 — pytanie o mniej, 14 — o więcej", async () => {
+  const replies = ["Dobrze! [PLAN goal=muscle level=intermediate equipment=gym minutes=30 focus=legs]"];
+  const llm = { streamChat: (args) => fakeLlm(replies.shift() || "OK.").streamChat(args) };
+  const coach = createCoach({ voiceId: "v", catalog: buildCatalog(), engine });
+  const { session, events } = await liveSession({ llm, coach });
+  const say = async (text) => { await runTurn(session, text); for (let i = 0; i < 12; i += 1) await tick(); };
+  const spoken = () => events.filter((event) => event.stage === "avatar_transcription").map((event) => event.text);
+  await say("Pół godziny, siłownia, nogi.");
+  await say("tak");
+  await say("gotowe");
+  await say("gotowe");
+  assert.match(spoken().at(-1), /Seria pierwsza z 3, 10 powtórzeń\. Weź ciężar, z którym zrobisz 10 powtórzeń z zapasem dwóch, i po serii powiedz, ile było/);
+
+  const { runner } = session.coachState;
+  await say("Zrobiłem 4 na 60 kilo");
+  assert.equal(spoken().at(-1), "Seria zaliczona. Tylko 4 z 10 — ciężar wydaje się za duży. Zmniejszyć do 55 kg na następną serię? Przerwa 90 sekund.");
+  assert.equal(runner.progress.completed[0].kg, 60);
+  await say("Tak.");
+  assert.equal(spoken().at(-1), "Dobrze, następna seria na 55 kg.");
+  assert.equal(session.coachState.plan.exercises[0].kg, 55);
+
+  await say("gotowe");
+  assert.match(spoken().at(-1), /seria druga z 3, 10 powtórzeń na 55 kg/);
+  await say("Zrobiłem 14");
+  assert.equal(spoken().at(-1), "Seria zaliczona. 14 powtórzeń to sporo. Zwiększyć do 57,5 kg na następną serię? Przerwa 90 sekund.");
+  assert.equal(runner.progress.completed[1].kg, 55, "bez podanego ciężaru — roboczy");
+  await say("Nie, zostaw.");
+  assert.equal(spoken().at(-1), "Dobrze, zostajemy przy 55 kg.");
+  assert.equal(session.coachState.plan.exercises[0].kg, 55);
+
+  await say("gotowe");
+  await say("Zrobiłem 10");
+  assert.equal(spoken().at(-1).startsWith("Seria zaliczona. Przerwa"), true, "trzecia, ostatnia seria — bez pytania (o następnym razie decyduje progresja)");
+  runner.stop();
+  await endSession(session);
+});
