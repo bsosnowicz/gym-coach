@@ -1,0 +1,40 @@
+{
+  "id": "standing",
+  "label": "Pozycja stojąca",
+  "description": "Neutralna postawa wyjściowa przed ćwiczeniem, na punktach COCO-17.",
+  "rules": [
+    {
+      "id": "torso_not_upright",
+      "label": "tułów nie jest wyprostowany",
+      "correction": "Stań prosto, barki nad biodrami.",
+      "type": "angle",
+      "points": {
+        "left": ["left_shoulder", "left_hip", "left_ankle"],
+        "right": ["right_shoulder", "right_hip", "right_ankle"]
+      },
+      "min": 155
+    },
+    {
+      "id": "shoulders_not_level",
+      "label": "barki nie są na jednej wysokości",
+      "correction": "Wyrównaj barki.",
+      "type": "vertical_delta",
+      "points": {
+        "any": ["left_shoulder", "right_shoulder"]
+      },
+      "min": -0.08,
+      "max": 0.08
+    },
+    {
+      "id": "knees_too_bent",
+      "label": "kolana są zbyt ugięte",
+      "correction": "Wyprostuj nogi, bez blokowania kolan.",
+      "type": "angle",
+      "points": {
+        "left": ["left_hip", "left_knee", "left_ankle"],
+        "right": ["right_hip", "right_knee", "right_ankle"]
+      },
+      "min": 155
+    }
+  ]
+}
