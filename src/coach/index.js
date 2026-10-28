@@ -5,7 +5,7 @@ const { createWorkoutRunner, advanceIntent } = require("./workout");
 const { cueBlockedBy } = require("./cues");
 const { BODY_PARTS, excludedBy } = require("./exercises");
 const { SEVERITIES } = require("./injury-store");
-const { findInjuryMentions } = require("./body-mentions");
+const { findInjuryMentions, mentionsInjury } = require("./body-mentions");
 
 const severityRank = (severity) => SEVERITIES.indexOf(severity);
 
@@ -198,7 +198,42 @@ function createCoach({
 
   // Pain right now: the exercise stops, the rest of the plan leaves that body
   // part alone, and the report is kept for the next sessions.
-  function handlePain(session, { part, severity, note }) {
+  // After a break, once the engine's "wracamy" is said and nobody has spoken for a
+  // moment (as holdPainNote in yoga-startup): the plan adapts to pain reported
+  // during the break, and what named no clear body part goes to the model.
+  // Earlier, the engine's resume line would cut the announcement off.
+  const HELD_PAIN_QUIET_MS = 1500;
+  const HELD_PAIN_POLL_MS = 250;
+  const HELD_PAIN_MAX_WAIT_MS = 60000;
+  function afterBreak(session) {
+    const state = session.coachState;
+    if ((!state.heldPain?.length && !state.painAfterBreak?.length) || state.heldPainTimer) return;
+    const startedAt = Date.now();
+    let quietSince = null;
+    const check = () => {
+      state.heldPainTimer = null;
+      if (session.closed) return;
+      const busy = cueBlockedBy(session);
+      if (busy) quietSince = null;
+      else if (quietSince === null) quietSince = Date.now();
+      if ((quietSince !== null && Date.now() - quietSince >= HELD_PAIN_QUIET_MS) || Date.now() - startedAt > HELD_PAIN_MAX_WAIT_MS) {
+        if (busy) return;
+        const pains = state.painAfterBreak || [];
+        state.painAfterBreak = [];
+        for (const pain of pains) adaptPlanToPain(session, pain);
+        const text = (state.heldPain || []).join(" ");
+        state.heldPain = [];
+        if (text) engine.runTurn(session, text);
+        return;
+      }
+      state.heldPainTimer = unrefTimer(check, HELD_PAIN_POLL_MS);
+    };
+    state.heldPainTimer = unrefTimer(check, HELD_PAIN_POLL_MS);
+  }
+
+  // quiet: saved and noted, but the plan is not changed and nothing is said —
+  // during a break; the coach reacts once the break is over.
+  function handlePain(session, { part, severity, note, quiet = false }) {
     const state = session.coachState;
     const name = BODY_PART_NAMES[part];
     engine.record(session, "injury.reported", { part, severity });
@@ -226,6 +261,17 @@ function createCoach({
       if (!session.closed) engine.emit(session, { stage: "injury_saved", part, name, severity, saved });
     });
 
+    if (quiet) {
+      state.painAfterBreak = [...(state.painAfterBreak || []), { part, severity }];
+      return;
+    }
+    adaptPlanToPain(session, { part, severity });
+  }
+
+  // The exercise in progress stops and the rest of the plan leaves the part alone.
+  function adaptPlanToPain(session, { part, severity }) {
+    const state = session.coachState;
+    const name = BODY_PART_NAMES[part];
     const caution = severity === "high"
       ? " Przy ostrym bólu lepiej dziś skończyć: powiedz „kończymy”, jeśli tak czujesz."
       : "";
@@ -418,7 +464,22 @@ function createCoach({
     },
 
     onPause: (session) => session.coachState.runner?.pause(),
-    onResume: (session) => session.coachState.runner?.resume(),
+    onResume: (session) => {
+      session.coachState.runner?.resume();
+      afterBreak(session);
+    },
+
+    // Called by holdPainDuringBreak (below) for what was said during a break.
+    holdPain(session, text) {
+      const state = session.coachState;
+      console.log(`Sesja ${session.id}: wzmianka o bólu w przerwie — przekażę ją po powrocie („${text}”).`);
+      engine.record(session, "injury.held_during_break", { text });
+      // Saved now, in case the session ends without coming back from the break; the
+      // plan changes on the way back. Only what names no clear body part goes to the model.
+      const mentions = findInjuryMentions(text);
+      for (const mention of mentions) handlePain(session, { ...mention, note: text, quiet: true });
+      if (!mentions.length) state.heldPain = [...(state.heldPain || []), text].slice(-3);
+    },
 
     // The plan is read out with fixed text right after the reply that carried the marker.
     async afterTurn(session, { userText } = {}) {
@@ -473,4 +534,19 @@ function createCoach({
   };
 }
 
-module.exports = { createCoach, parsePlanMarker, SYSTEM_PROMPT };
+// Wraps the coach after withSessionControl: during a break or the end window the
+// engine drops what the user says (only "wracamy" / "kończymy" count), so a
+// word about pain would be lost. It is kept for the coach instead (coach.holdPain).
+function holdPainDuringBreak(coach) {
+  return {
+    ...coach,
+    beforeTurn(session, userText) {
+      const control = session.control || {};
+      const onHold = (control.paused || control.endPending) && !control.finishing;
+      if (onHold && mentionsInjury(userText)) coach.holdPain(session, userText);
+      return coach.beforeTurn(session, userText);
+    },
+  };
+}
+
+module.exports = { createCoach, holdPainDuringBreak, parsePlanMarker, SYSTEM_PROMPT };

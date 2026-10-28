@@ -35,6 +35,13 @@ const PARTS = [
 // Words that undo the report: "już nie boli", "nic mnie nie boli".
 const NEGATIONS = /\b(nie boli|juz nie|nic mnie|przestal|przestala|przeszlo|wyleczon)/;
 
+// Any word of pain or injury at all, side or part named or not: during a break
+// such an utterance is kept for the coach instead of being dropped.
+function mentionsInjury(text) {
+  const plain = normalizeWords(text).join(" ");
+  return INJURY_STEMS.some((stem) => plain.includes(stem)) && !NEGATIONS.test(plain);
+}
+
 // [{ part, severity }] for each clearly named injured body part, or [].
 function findInjuryMentions(text) {
   const words = normalizeWords(text);
@@ -60,4 +67,4 @@ function findInjuryMentions(text) {
   return found;
 }
 
-module.exports = { findInjuryMentions };
+module.exports = { findInjuryMentions, mentionsInjury };
