@@ -75,3 +75,20 @@ test("Plan i rozmowa: planer bierze historię, a trener mówi o progresji przy p
   live.coachState.runner.stop();
   await endSession(live);
 });
+
+test("Różnorodność: plany przeplatają się A/B, a progresja liczy od ostatniego razu z danym ćwiczeniem", () => {
+  const profile = { goal: "muscle", level: "intermediate", equipment: "gym", minutes: 45 };
+  let history = [];
+  const plans = [];
+  for (let i = 0; i < 3; i += 1) {
+    const plan = planWorkout(catalog, profile, { history });
+    plans.push(plan);
+    const done = plan.exercises.flatMap((item) => Array.from({ length: item.sets }, () => ({ id: item.id, reps: item.reps, kg: 60 })));
+    history = [{ exercises: plan.exercises, sets: done }, ...history];
+  }
+  const ids = plans.map((plan) => plan.exercises.map((item) => item.id));
+  assert.ok(ids[0].every((id) => !ids[1].includes(id)), `A i B bez wspólnych ćwiczeń: ${ids[1].join(", ")}`);
+  assert.deepEqual(ids[2], ids[0], "trzecia sesja wraca do A");
+  assert.equal(plans[2].exercises[0].kg, 62.5, "z progresją od sesji A");
+  assert.deepEqual(plans[2].exercises.map((item) => item.pattern), plans[0].exercises.map((item) => item.pattern), "te same wzorce ruchu");
+});

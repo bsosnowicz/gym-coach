@@ -97,13 +97,18 @@ function planWorkout(catalog, { goal, level, equipment, minutes }, { avoid = [],
   const candidates = catalog.available(filters);
   const wanted = exercisesFor(minutes, prescription);
 
+  // Variety like an A/B split: an exercise of the last session gives way to
+  // another one of the same slot, so plans alternate — and progression still
+  // has a "last time" for each exercise (src/coach/progression.js).
+  const lastSession = new Set((history[0]?.exercises || []).map((item) => item.id));
   const chosen = [];
   for (const patterns of SLOTS) {
     if (chosen.length >= wanted) break;
     const pick = candidates
       .filter((exercise) => patterns.includes(exercise.pattern) && !chosen.some((item) => item.id === exercise.id))
-      // Within a slot: the slot's first pattern, then compound before isolation.
+      // Within a slot: the slot's first pattern, not done last time, compound before isolation.
       .sort((a, b) => patterns.indexOf(a.pattern) - patterns.indexOf(b.pattern)
+        || (lastSession.has(a.id) ? 1 : 0) - (lastSession.has(b.id) ? 1 : 0)
         || (a.mechanic === "compound" ? 0 : 1) - (b.mechanic === "compound" ? 0 : 1))[0];
     if (pick) chosen.push(pick);
   }
