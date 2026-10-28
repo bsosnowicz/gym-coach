@@ -84,3 +84,12 @@ export function report(sessionId, action, details = {}) {
     .then((res) => { if (!res.ok) log(`(Raport ${action} odrzucony: HTTP ${res.status})`); })
     .catch(() => {});
 }
+
+// A posture correction seen on the camera (public/camera/correction-loop.js).
+// The server decides whether it is spoken now: { spoken, reason? }.
+export async function sendCue(sessionId, { scenario, deviation }) {
+  const res = await postJson("/api/session/cue", { sessionId, scenario, deviation });
+  const data = await parseJson(res);
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
+}

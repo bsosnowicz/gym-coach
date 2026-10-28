@@ -429,6 +429,7 @@ export function createLiteAdapter({
       return Boolean(sessionId);
     },
     get reconnecting() { return handoverInProgress; },
+    get sessionId() { return sessionId; },
     pause: () => pauseSession(sessionId),
     askEnd: () => askEnd(sessionId),
     continueSession: () => continueSession(sessionId),

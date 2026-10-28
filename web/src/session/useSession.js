@@ -41,10 +41,13 @@ export function useSession(videoRef, { texts = {}, onEvent } = {}) {
   }
 
   const adapterRef = useRef(null);
+  // Who has the floor; the app's own parts (e.g. camera corrections) wait for a pause on it.
+  const floorRef = useRef(null);
   if (!adapterRef.current) {
     const texts = () => latest.current.TEXTS;
+    floorRef.current = createConversationFloor();
     adapterRef.current = createLiteAdapter({
-      floor: createConversationFloor(),
+      floor: floorRef.current,
       onTranscript: (speaker, text) => {
         transcriptId.current += 1;
         setTranscript((items) => [...items, { id: transcriptId.current, speaker, text }]);
@@ -136,6 +139,7 @@ export function useSession(videoRef, { texts = {}, onEvent } = {}) {
 
   return {
     phase, running: phase === "running", status, transcript, hold, micMuted, micBlocked, finishing, reconnecting, texts: TEXTS,
+    floor: floorRef.current, sessionId: () => adapter.sessionId,
     start, pause, askEnd, continueSession, finish, toggleMic, resumeMic,
   };
 }

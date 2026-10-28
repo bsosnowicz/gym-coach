@@ -5,9 +5,15 @@
 //
 // YOLO is optional even here: when the service is down the panel keeps the
 // bare preview and says so; the conversation does not depend on it.
+//
+// Deviations become short corrections by the avatar (correction-loop.js):
+// only during a running session, in a pause of the conversation, never
+// during a break, the end window or an avatar handover.
 import { useEffect, useRef, useState } from "react";
+import { sendCue } from "../../../public/api.js";
 import { log } from "../../../public/ui/log.js";
 import { createCamera, describeCameraError, listCameras } from "../../../public/camera/camera.js";
+import { createCorrectionLoop } from "../../../public/camera/correction-loop.js";
 import { clearSkeleton, drawSkeleton } from "../../../public/camera/skeleton.js";
 import { createYoloPoseStream, yoloPoseWsUrl } from "../../../public/camera/yolo-stream.js";
 import { CAMERA_TEXTS } from "./texts.js";
@@ -33,11 +39,11 @@ function describeAnalysis(analysis, t) {
   return deviation ? t.deviation(deviation.label || deviation.id) : t.postureOk;
 }
 
-// onAnalysis(analysis): every result from YOLO, for the correction loop.
-export default function CameraPanel({ config, texts = {}, onAnalysis = () => {} }) {
+// session: from useSession(); the corrections go into its conversation.
+export default function CameraPanel({ config, session, texts = {} }) {
   const t = { ...CAMERA_TEXTS, ...texts };
-  const latest = useRef({ t, onAnalysis });
-  latest.current = { t, onAnalysis };
+  const latest = useRef({ t, session });
+  latest.current = { t, session };
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const cameraRef = useRef(null);
@@ -51,6 +57,25 @@ export default function CameraPanel({ config, texts = {}, onAnalysis = () => {} 
   const [state, setState] = useState("off");
   const [message, setMessage] = useState(t.off);
 
+  const loopRef = useRef(null);
+  if (!loopRef.current) {
+    loopRef.current = createCorrectionLoop({
+      floor: session.floor,
+      canSpeak: () => {
+        const current = latest.current.session;
+        return current.running && !current.hold && !current.reconnecting && !current.finishing;
+      },
+      onCue: (cue) => {
+        const sessionId = latest.current.session.sessionId();
+        if (!sessionId) return;
+        sendCue(sessionId, cue)
+          .then(({ spoken, reason }) => log(spoken ? `Kamera: korekta „${cue.deviation}” powiedziana.` : `Kamera: korekta „${cue.deviation}” pominięta (${reason}).`))
+          .catch((error) => log(`Kamera: korekta nie doszła (${error.message}).`));
+      },
+      log,
+    });
+  }
+
   async function refreshDevices() {
     try {
       setDevices(await listCameras());
@@ -62,6 +87,7 @@ export default function CameraPanel({ config, texts = {}, onAnalysis = () => {} 
   function stopYolo() {
     yoloRef.current?.stop();
     yoloRef.current = null;
+    loopRef.current.reset();
     if (canvasRef.current) clearSkeleton(canvasRef.current.getContext("2d"));
   }
 
@@ -88,7 +114,7 @@ export default function CameraPanel({ config, texts = {}, onAnalysis = () => {} 
           if (analysis.detected) drawSkeleton(ctx, analysis.person?.keypoints, { issue: analysis.deviations?.length > 0 });
           else clearSkeleton(ctx);
           setMessage(describeAnalysis(analysis, latest.current.t));
-          latest.current.onAnalysis(analysis);
+          loopRef.current.handleAnalysis(analysis);
         },
         onTelemetry: (stats) => {
           const line = describeTelemetry(stats);
@@ -109,6 +135,7 @@ export default function CameraPanel({ config, texts = {}, onAnalysis = () => {} 
       }
       yoloRef.current = stream;
       stream.setScenario(SCENARIO);
+      loopRef.current.setScenario(SCENARIO);
       setMessage(t.analysing);
     } catch (error) {
       if (epoch !== epochRef.current) return;

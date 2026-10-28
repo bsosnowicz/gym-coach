@@ -30,6 +30,7 @@ const { createElevenLabsTts } = require("./src/adapters/tts/elevenlabs");
 const { createGroqWhisperStt } = require("./src/adapters/stt/groq-whisper");
 const { createLiveAvatarLite } = require("./src/adapters/avatar/liveavatar-lite");
 const { createCoach } = require("./src/coach");
+const { createCueSpeaker } = require("./src/coach/cues");
 const { diffUsage, usageLine } = require("./src/usage");
 
 const HOST = process.env.HOST || "127.0.0.1";
@@ -103,6 +104,8 @@ const sessionStartRateLimit = createFixedWindowRateLimiter({ limit: 10, windowMs
 const sttRateLimit = createFixedWindowRateLimiter({ limit: 60, windowMs: 60000 });
 const turnRateLimit = createFixedWindowRateLimiter({ limit: 60, windowMs: 60000 });
 const reportRateLimit = createFixedWindowRateLimiter({ limit: 120, windowMs: 60000 });
+const cueRateLimit = createFixedWindowRateLimiter({ limit: 30, windowMs: 60000 });
+const cues = createCueSpeaker({ speakText: engine.speakText, record: engine.record });
 
 function requireShortText(value, label, maxLength) {
   if (typeof value !== "string" || !value.trim() || value.length > maxLength) {
@@ -246,6 +249,18 @@ const ROUTES = {
     if (session.handover.active) await engine.endSession(session);
     else await coach.farewell(session, { source: "button" });
     sendJson(res, 200, { ok: true });
+  },
+
+  // A posture correction the page saw on the camera; the text is the scenario's own (src/coach/cues.js).
+  "POST /api/session/cue": async (req, res, user) => {
+    cueRateLimit(user.id);
+    const body = await readJsonBody(req);
+    const session = ownedSession(body.sessionId, user);
+    const result = await cues.speak(session, {
+      scenario: requireShortText(body.scenario, "scenario", 64),
+      deviation: requireShortText(body.deviation, "deviation", 64),
+    });
+    sendJson(res, 200, result);
   },
 
   "POST /api/session/handover-ready": async (req, res, user) => {
