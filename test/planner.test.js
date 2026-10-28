@@ -163,3 +163,17 @@ test("Potwierdzenie: plan dopiero po „tak”; poprawka wraca do modelu, który
   session.coachState.runner.stop();
   await endSession(session);
 });
+
+test("Grupa mięśni (test 29.10: „wzmocnienie nóg” dało pompki): focus=legs — same nogi przy 20 min, ~2/3 nóg przy 45, różne wzorce", () => {
+  const legs = (minutes) => planWorkout(catalog, { goal: "strength", level: "intermediate", equipment: "gym", minutes, focus: "legs" });
+  const onLegs = (item) => catalog.get(item.id).primaryMuscles.some((muscle) => ["quadriceps", "hamstrings", "glutes", "calves", "adductors", "abductors"].includes(muscle));
+  const short = legs(20);
+  assert.ok(short.exercises.every(onLegs), short.exercises.map((item) => item.name).join(", "));
+  const longer = planWorkout(catalog, { goal: "muscle", level: "intermediate", equipment: "gym", minutes: 45, focus: "legs" });
+  const legItems = longer.exercises.filter(onLegs);
+  assert.ok(legItems.length >= Math.ceil(longer.exercises.length * 2 / 3));
+  assert.equal(new Set(legItems.map((item) => item.pattern)).size, legItems.length, "każde ćwiczenie na nogi innym wzorcem");
+  assert.ok(!longer.exercises.some((item) => item.pattern === "conditioning"), "wspinaczka to nie trening nóg");
+  assert.match(describePlan(short), /Skupiamy się na: nogi\./);
+  assert.equal(parsePlanMarker("goal=strength level=beginner equipment=gym minutes=20 focus=legs").focus, "legs");
+});

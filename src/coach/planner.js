@@ -18,8 +18,19 @@ const FOCUS_MUSCLES = {
   hamstrings: "tył uda", lats: "najszersze grzbietu", lower_back: "dolny odcinek pleców", middle_back: "środek pleców",
   neck: "szyja", quadriceps: "przód uda", shoulders: "barki", traps: "kaptury", triceps: "triceps",
 };
-// How many exercises of a short plan the focus may take: the rest stays full-body.
-const FOCUS_EXERCISES = 2;
+// Groups as people say them ("trening nóg", "plecy"): muscles of the source.
+const FOCUS_GROUPS = {
+  legs: { name: "nogi", muscles: ["quadriceps", "hamstrings", "glutes", "calves", "adductors", "abductors"] },
+  back: { name: "plecy", muscles: ["lats", "middle back", "lower back", "traps"] },
+  arms: { name: "ramiona", muscles: ["biceps", "triceps", "forearms"] },
+  core: { name: "brzuch i core", muscles: ["abdominals", "lower back"] },
+};
+// What a focus value means: its name and the muscles that count as "on focus".
+const focusOf = (focus) => FOCUS_GROUPS[focus] || (FOCUS_MUSCLES[focus] ? { name: FOCUS_MUSCLES[focus], muscles: [focus.replace("_", " ")] } : null);
+// The focus takes about two thirds of the plan (at least two exercises): "trening
+// nóg" should be mostly legs; the rest keeps the session balanced.
+const FOCUS_SHARE = 2 / 3;
+const FOCUS_MIN_EXERCISES = 2;
 const EQUIPMENT_PRESETS = {
   gym: {
     equipment: ["body_only", "dumbbell", "barbell", "kettlebell", "cable", "machine", "band"],
@@ -124,27 +135,40 @@ function planWorkout(catalog, { goal, level, equipment, minutes, focus = null },
     if (pick) chosen.push(pick);
   }
 
-  // Focus on a muscle: up to two exercises with it as the main muscle go first
-  // (worked while fresh) and push out the least important slots. Only what fits
-  // the injuries — with nothing safe the plan stays full-body and says so.
+  // Focus: about two thirds of the plan on the muscle or group, first (worked
+  // while fresh), each with a different movement pattern where possible; the
+  // least important slots make room. Only what fits the injuries and the gear.
   let focusAvailable = true;
-  if (focus) {
-    const muscle = focus.replace("_", " ");
-    const onFocus = (exercise) => exercise.primaryMuscles.includes(muscle);
-    const extra = candidates
-      .filter((exercise) => onFocus(exercise) && !chosen.some((item) => item.id === exercise.id))
-      .sort((a, b) => (lastSession.has(a.id) ? 1 : 0) - (lastSession.has(b.id) ? 1 : 0)
-        || (a.mechanic === "compound" ? 0 : 1) - (b.mechanic === "compound" ? 0 : 1));
-    const already = chosen.filter(onFocus);
-    const added = extra.slice(0, Math.max(0, FOCUS_EXERCISES - already.length));
-    focusAvailable = already.length + added.length > 0;
-    const rest = chosen.filter((exercise) => !onFocus(exercise)).slice(0, Math.max(0, wanted - already.length - added.length));
-    chosen.splice(0, chosen.length, ...already, ...added, ...rest);
+  let focusLimited = false;
+  const target = focusOf(focus);
+  if (target) {
+    const onFocus = (exercise) => exercise.primaryMuscles.some((muscle) => target.muscles.includes(muscle));
+    const want = Math.min(wanted, Math.max(FOCUS_MIN_EXERCISES, Math.ceil(wanted * FOCUS_SHARE)));
+    // Only strength patterns of the slots: mountain climbers hit the quads, but are no leg day.
+    const slotOf = (pattern) => SLOTS.findIndex((patterns) => patterns.includes(pattern));
+    const pool = candidates.filter((exercise) => onFocus(exercise) && slotOf(exercise.pattern) >= 0);
+    const picked = [];
+    while (picked.length < want) {
+      const usedPatterns = new Set(picked.map((exercise) => exercise.pattern));
+      const next = pool
+        .filter((exercise) => !picked.includes(exercise))
+        .sort((a, b) => (usedPatterns.has(a.pattern) ? 1 : 0) - (usedPatterns.has(b.pattern) ? 1 : 0)
+          || slotOf(a.pattern) - slotOf(b.pattern)
+          || (lastSession.has(a.id) ? 1 : 0) - (lastSession.has(b.id) ? 1 : 0)
+          || (a.mechanic === "compound" ? 0 : 1) - (b.mechanic === "compound" ? 0 : 1))[0];
+      if (!next) break;
+      picked.push(next);
+    }
+    focusAvailable = picked.length > 0;
+    focusLimited = picked.length > 0 && picked.length < want;
+    const rest = chosen.filter((exercise) => !onFocus(exercise)).slice(0, Math.max(0, wanted - picked.length));
+    chosen.splice(0, chosen.length, ...picked, ...rest);
   }
 
   return {
     profile: { goal, level, equipment, minutes, focus },
     focusAvailable,
+    focusLimited,
     avoid,
     warmup: { durationS: WARMUP_S },
     exercises: chosen.map((exercise) => applyProgression(toPlanItem(exercise, prescription, level), exercise, history)),
@@ -158,11 +182,14 @@ function describePlan(plan) {
   const items = plan.exercises.map((item) =>
     `${item.name}, ${item.sets} ${SETS_WORD(item.sets)} po ${item.reps ? `${item.reps} powtórzeń` : `${item.seconds} sekund`}`);
   const { focus } = plan.profile;
+  const name = focusOf(focus)?.name;
+  const reason = plan.avoid.length ? "przy Twojej kontuzji" : "na Twój sprzęt";
   const focusText = !focus ? ""
-    : plan.focusAvailable ? `Skupiamy się na: ${FOCUS_MUSCLES[focus]}. `
-      : `Na ${FOCUS_MUSCLES[focus]} nie mam dziś ćwiczenia ${plan.avoid.length ? "bezpiecznego przy Twojej kontuzji" : "na Twój sprzęt"}, więc robimy trening ogólny. `;
+    : !plan.focusAvailable ? `Na ${name} nie mam dziś ćwiczenia ${reason === "na Twój sprzęt" ? "na Twój sprzęt" : `bezpiecznego ${reason}`}, więc robimy trening ogólny. `
+      : plan.focusLimited ? `Skupiamy się na: ${name}, ale ${reason} mniej ćwiczeń z tej partii niż zwykle. `
+        : `Skupiamy się na: ${name}. `;
   return `Mam plan na dziś. ${focusText}Najpierw pięć minut rozgrzewki, potem: ${items.join("; ")}. `
     + "Plan widzisz na ekranie. Powiedz „gotowe”, kiedy zaczynamy rozgrzewkę.";
 }
 
-module.exports = { planWorkout, describePlan, toPlanItem, filtersFor, GOALS, EQUIPMENT_PRESETS, PRESCRIPTIONS, FOCUS_MUSCLES };
+module.exports = { planWorkout, describePlan, toPlanItem, filtersFor, focusOf, GOALS, EQUIPMENT_PRESETS, PRESCRIPTIONS, FOCUS_MUSCLES, FOCUS_GROUPS };

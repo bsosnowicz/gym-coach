@@ -1,5 +1,5 @@
 const { buildCatalog } = require("./exercises");
-const { planWorkout, describePlan, toPlanItem, filtersFor, GOALS, EQUIPMENT_PRESETS, FOCUS_MUSCLES } = require("./planner");
+const { planWorkout, describePlan, toPlanItem, filtersFor, focusOf, GOALS, EQUIPMENT_PRESETS } = require("./planner");
 const { EQUIPMENT, GEAR, LEVELS } = require("./exercises");
 const { createWorkoutRunner, advanceIntent } = require("./workout");
 const { cueBlockedBy } = require("./cues");
@@ -37,7 +37,8 @@ gdzie cel to strength (siła), muscle (masa mięśniowa), endurance (kondycja, w
 albo general (ogólna sprawność); poziom to beginner, intermediate albo expert;
 sprzęt to gym (siłownia), home_dumbbells (dom z hantlami lub kettlebell) albo bodyweight
 (bez sprzętu). Gdy użytkownik chce popracować nad konkretną partią mięśni, dopisz w znaczniku
-focus=<mięsień>: abdominals (brzuch), abductors, adductors, biceps, calves (łydki), chest (klatka),
+focus=<partia>: grupa legs (nogi, „wzmocnienie nóg”, „trening nóg”), back (plecy), arms (ramiona,
+ręce), core (brzuch i mięśnie głębokie) albo pojedynczy mięsień: abdominals (brzuch), abductors, adductors, biceps, calves (łydki), chest (klatka),
 forearms (przedramiona), glutes (pośladki), hamstrings (tył uda, dwugłowe uda), lats (najszersze
 grzbietu), lower_back, middle_back, neck, quadriceps (przód uda, czworogłowe), shoulders (barki),
 traps (kaptury), triceps. Planu nie wymyślaj ani nie wymieniaj ćwiczeń: plan ułoży i przeczyta aplikacja.
@@ -91,7 +92,7 @@ function parsePlanMarker(text) {
   if (!GOALS.includes(fields.goal) || !PLAN_LEVELS.includes(fields.level) || !EQUIPMENT_PRESETS[fields.equipment]) return null;
   if (!Number.isFinite(minutes)) return null;
   // A focus outside the list is dropped, not the whole plan.
-  const focus = FOCUS_MUSCLES[fields.focus] ? fields.focus : null;
+  const focus = focusOf(fields.focus) ? fields.focus : null;
   return { goal: fields.goal, level: fields.level, equipment: fields.equipment, minutes, focus };
 }
 
@@ -148,7 +149,7 @@ const LEVEL_NAMES = { beginner: "początkujący", intermediate: "średniozaawans
 const EQUIPMENT_NAMES = { gym: "siłownia", home_dumbbells: "dom z hantlami", bodyweight: "bez sprzętu" };
 
 function describeProfile(profile) {
-  const focus = profile.focus ? `, skupiamy się na: ${FOCUS_MUSCLES[profile.focus]}` : "";
+  const focus = profile.focus ? `, skupiamy się na: ${focusOf(profile.focus).name}` : "";
   return `Podsumuję: cel ${GOAL_NAMES[profile.goal]}, poziom ${LEVEL_NAMES[profile.level]}, `
     + `${EQUIPMENT_NAMES[profile.equipment]}, ${profile.minutes} minut${focus}. Układam plan?`;
 }
