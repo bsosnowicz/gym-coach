@@ -68,7 +68,7 @@ ws://localhost:8000/ws/analyze?scenario=standing
 
 - serwis → `{ "type": "ready", "scenario": "standing", "model": "...", "scenarios": ["standing"] }`
 - strona → `{ "type": "frame", "frame_id": 123, "image_base64": "/9j/..." }`
-- serwis → `{ "type": "analysis", "frame_id": 123, "detected": true, "is_correct": false, "score": 0.67, "deviations": [{ "id": "knees_too_bent", "correction": "Wyprostuj nogi, bez blokowania kolan.", "value": 132.4, "expected": { "min": 155 } }], "person": { "keypoints": [...] } }`
+- serwis → `{ "type": "analysis", "frame_id": 123, "detected": true, "is_correct": false, "score": 0.67, "deviations": [{ "id": "shoulders_not_over_hips", "correction": "Stań prosto, barki nad biodrami.", "value": 0.11, "expected": { "min": -0.06, "max": 0.06 } }], "person": { "keypoints": [...] } }`
 - zmiana scenariusza bez ponownego łączenia: `{ "type": "set_scenario", "scenario": "standing" }` → `{ "type": "scenario_set", "scenario": "standing" }`
 
 Bez `scenario` serwis zwraca same punkty i widoczność (`is_correct: null`).
@@ -85,5 +85,5 @@ z progami `min` / `max` i tekstem `correction`, który trafia do korekty głosem
 Współrzędne są znormalizowane do ramki, oś `y` rośnie w dół. Reguła z `left`
 i `right` mierzy stronę z pewniejszymi punktami.
 
-`standing` to neutralna postawa wyjściowa; scenariusze ćwiczeń (przysiad)
+`standing` to neutralna postawa wyjściowa z jedną regułą (barki nad biodrami); scenariusze ćwiczeń (przysiad)
 dochodzą na etapach 05–06.

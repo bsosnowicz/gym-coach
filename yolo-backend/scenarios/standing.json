@@ -1,40 +1,19 @@
 {
   "id": "standing",
   "label": "Pozycja stojąca",
-  "description": "Neutralna postawa wyjściowa przed ćwiczeniem, na punktach COCO-17.",
+  "description": "Neutralna postawa wyjściowa: sprawdza drogę kamera → YOLO → korekta głosem. Ćwiczenia dokłada projekt.",
   "rules": [
     {
-      "id": "torso_not_upright",
-      "label": "tułów nie jest wyprostowany",
+      "id": "shoulders_not_over_hips",
+      "label": "barki nie są nad biodrami",
       "correction": "Stań prosto, barki nad biodrami.",
-      "type": "angle",
+      "type": "horizontal_delta",
       "points": {
-        "left": ["left_shoulder", "left_hip", "left_ankle"],
-        "right": ["right_shoulder", "right_hip", "right_ankle"]
+        "left": ["left_hip", "left_shoulder"],
+        "right": ["right_hip", "right_shoulder"]
       },
-      "min": 155
-    },
-    {
-      "id": "shoulders_not_level",
-      "label": "barki nie są na jednej wysokości",
-      "correction": "Wyrównaj barki.",
-      "type": "vertical_delta",
-      "points": {
-        "any": ["left_shoulder", "right_shoulder"]
-      },
-      "min": -0.08,
-      "max": 0.08
-    },
-    {
-      "id": "knees_too_bent",
-      "label": "kolana są zbyt ugięte",
-      "correction": "Wyprostuj nogi, bez blokowania kolan.",
-      "type": "angle",
-      "points": {
-        "left": ["left_hip", "left_knee", "left_ankle"],
-        "right": ["right_hip", "right_knee", "right_ankle"]
-      },
-      "min": 155
+      "min": -0.06,
+      "max": 0.06
     }
   ]
 }

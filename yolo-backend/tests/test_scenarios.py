@@ -10,15 +10,13 @@ from pose_rules import Keypoint, evaluate_scenario, load_scenarios
 SCENARIOS_DIR = Path(__file__).resolve().parents[1] / "scenarios"
 
 
-def standing_person(knee_x=0.45):
-    # Front view: a straight line shoulder-hip-ankle on each side.
+def standing_person(lean=0.0):
+    # Front view; lean shifts both shoulders sideways from above the hips.
     coords = {
-        "left_shoulder": (0.45, 0.25),
-        "right_shoulder": (0.55, 0.25),
+        "left_shoulder": (0.45 + lean, 0.25),
+        "right_shoulder": (0.55 + lean, 0.25),
         "left_hip": (0.45, 0.5),
         "right_hip": (0.55, 0.5),
-        "left_knee": (knee_x, 0.7),
-        "right_knee": (1.0 - knee_x, 0.7),
         "left_ankle": (0.45, 0.9),
         "right_ankle": (0.55, 0.9),
     }
@@ -42,12 +40,13 @@ class ScenariosTest(unittest.TestCase):
         self.assertTrue(result["is_correct"])
         self.assertEqual(result["deviations"], [])
 
-    def test_standing_flags_bent_knees(self):
+    def test_standing_flags_leaning_torso(self):
         scenario = load_scenarios(SCENARIOS_DIR)["standing"]
 
-        result = evaluate_scenario(scenario, standing_person(knee_x=0.3))
+        result = evaluate_scenario(scenario, standing_person(lean=0.12))
 
-        self.assertIn("knees_too_bent", [item["id"] for item in result["deviations"]])
+        self.assertEqual([item["id"] for item in result["deviations"]], ["shoulders_not_over_hips"])
+        self.assertEqual(result["deviations"][0]["correction"], "Stań prosto, barki nad biodrami.")
 
 
 if __name__ == "__main__":
