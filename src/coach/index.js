@@ -8,6 +8,8 @@ const { SEVERITIES } = require("./injury-store");
 const { findInjuryMentions, mentionsInjury } = require("./body-mentions");
 const { recoveryFor, agoText, RECOVERY_HOURS } = require("./schedule");
 const { normalizeWords } = require("../engine/words");
+const { INTERVIEW_PROMPT, knownProfileContext, parseProfileMarker, describeInterview, weekProfile } = require("./interview");
+const { buildWeekPlan, describeWeek } = require("./week-plan");
 
 const severityRank = (severity) => SEVERITIES.indexOf(severity);
 
@@ -22,6 +24,25 @@ const BODY_PART_NAMES = {
 };
 
 const BODY_PART_IDS = BODY_PARTS.join(", ");
+
+// Shared by both conversations (training and the interview).
+const PAIN_RULES = `Ból i kontuzje: gdy użytkownik mówi, że coś go boli albo ma uraz (teraz albo w przeszłości,
+także w trakcie wywiadu), odpowiedz krótko i ze spokojem, nie zachęcaj do ćwiczenia przez ból
+i dopisz znacznik [PAIN part=<partia> severity=<low|medium|high>], gdzie partia to dokładnie
+jedna wartość z listy: ${BODY_PART_IDS}. Gdy nie da się jej przypisać, użyj other.
+Liczy się każda wzmianka o kontuzji, urazie, operacji albo rehabilitacji, także bez bólu
+i także podana jako cel („chcę potrenować stabilizację na kontuzjowanym lewym kolanie” to
+[PAIN part=knee_left severity=low]). Nie zapisuj ponownie partii z listy aktywnych dolegliwości,
+chyba że teraz boli mocniej.
+Partia to miejsce, które BOLI, nie ćwiczenie: „boli mnie kolano przy martwym ciągu” to knee_…,
+nie lower_back. Strona: left albo right; gdy nie padła, dopytaj albo wybierz tę, o której mówił
+wcześniej. severity: low — lekki dyskomfort, medium — boli, high — mocno, ostro, „strasznie”.
+Gdy użytkownik pyta, czemu w planie jest ćwiczenie mimo bólu, a ból jest już zgłoszony,
+dopisz [PAIN …] jeszcze raz z mocniejszym severity: aplikacja wtedy wymieni ćwiczenie.
+Aplikacja sama przerwie ćwiczenie, dobierze zamiennik i zapamięta to na kolejne treningi.
+Gdy mówi, że coś już nie boli, dopisz [PAIN_RESOLVED part=<partia>].
+Przy bólu w klatce piersiowej, duszności, zawrotach głowy albo drętwieniu każ przerwać trening,
+poradź kontakt z lekarzem i dopisz [END].`;
 
 const SYSTEM_PROMPT = `Jesteś Gym Coachem, trenerem siłowym w aplikacji głosowej z awatarem.
 Rozmawiasz po polsku, naturalnie i konkretnie. Odpowiadasz krótko: jedno lub dwa zdania,
@@ -57,23 +78,7 @@ Zmiany planu robi aplikacja; Ty tylko potwierdzasz jednym krótkim zdaniem i dop
 pullup_bar (drążek), dip_bars (poręcze), box (podest), ab_wheel (kółko), barbell (sztanga),
 dumbbell (hantle), kettlebell, cable (wyciąg) albo machine (maszyny).
 Nie wymieniaj sam nowego ćwiczenia: poda je aplikacja.
-Ból i kontuzje: gdy użytkownik mówi, że coś go boli albo ma uraz (teraz albo w przeszłości,
-także w trakcie wywiadu), odpowiedz krótko i ze spokojem, nie zachęcaj do ćwiczenia przez ból
-i dopisz znacznik [PAIN part=<partia> severity=<low|medium|high>], gdzie partia to dokładnie
-jedna wartość z listy: ${BODY_PART_IDS}. Gdy nie da się jej przypisać, użyj other.
-Liczy się każda wzmianka o kontuzji, urazie, operacji albo rehabilitacji, także bez bólu
-i także podana jako cel („chcę potrenować stabilizację na kontuzjowanym lewym kolanie” to
-[PAIN part=knee_left severity=low]). Nie zapisuj ponownie partii z listy aktywnych dolegliwości,
-chyba że teraz boli mocniej.
-Partia to miejsce, które BOLI, nie ćwiczenie: „boli mnie kolano przy martwym ciągu” to knee_…,
-nie lower_back. Strona: left albo right; gdy nie padła, dopytaj albo wybierz tę, o której mówił
-wcześniej. severity: low — lekki dyskomfort, medium — boli, high — mocno, ostro, „strasznie”.
-Gdy użytkownik pyta, czemu w planie jest ćwiczenie mimo bólu, a ból jest już zgłoszony,
-dopisz [PAIN …] jeszcze raz z mocniejszym severity: aplikacja wtedy wymieni ćwiczenie.
-Aplikacja sama przerwie ćwiczenie, dobierze zamiennik i zapamięta to na kolejne treningi.
-Gdy mówi, że coś już nie boli, dopisz [PAIN_RESOLVED part=<partia>].
-Przy bólu w klatce piersiowej, duszności, zawrotach głowy albo drętwieniu każ przerwać trening,
-poradź kontakt z lekarzem i dopisz [END].
+${PAIN_RULES}
 Nie masz obrazu z kamery ani pomiaru ruchu. Nie twierdź, że widzisz technikę,
 liczysz powtórzenia lub oceniasz wykonanie ćwiczenia.
 Gdy kamera jest włączona, aplikacja sama wypowiada w Twoim imieniu krótkie uwagi
@@ -203,14 +208,38 @@ const COURTESY_WORDS = [
 // engine: emit and speakText of src/engine, passed in by server.js; tests pass the same.
 // injuries: src/coach/injury-store.js, or null without Supabase (the session still adapts).
 // workoutLog: src/coach/workout-log.js, or null without Supabase.
+// plans: src/coach/plan-store.js (profile and weekly plans), or null without Supabase.
 function createCoach({
   voiceId, language = "pl", catalog = buildCatalog(), engine = require("../engine"),
-  injuries: injuryStore = null, workoutLog = null,
+  injuries: injuryStore = null, workoutLog = null, plans: planStore = null,
 }) {
   // The workout as the page shows it; sent on every change and to a page that (re)joins.
   function workoutEvent(session) {
     const { plan, runner } = session.coachState;
     return { stage: "workout", workout: plan ? { plan, progress: runner.snapshot() } : null };
+  }
+
+  // The weekly plan for the calendar; sent when it changes and to a page that (re)joins.
+  function weekEvent(session) {
+    const { mode, weekPlan } = session.coachState;
+    return { stage: "week_plan", mode, week: weekPlan };
+  }
+
+  // The interview's yes: the week is built, shown and kept (profile and plan, variant A).
+  function buildWeek(session, profile) {
+    const state = session.coachState;
+    const built = buildWeekPlan(catalog, weekProfile(profile), { avoid: state.avoid });
+    state.profile = profile;
+    state.weekPlan = { ...built, id: null, variant: "A", parentId: null, startedAt: new Date().toISOString() };
+    engine.record(session, "week.planned", { split: built.split, intensity: built.intensity, days: built.days.map((day) => `${day.weekday}:${day.type}`) });
+    engine.emit(session, weekEvent(session));
+    if (!planStore) return;
+    planStore.saveProfile(profile);
+    planStore.savePlan(built).then((saved) => {
+      engine.record(session, saved ? "week.saved" : "week.save_failed", {});
+      // The id lets changes during a workout become variant B of this plan.
+      if (saved && state.weekPlan?.days === built.days) state.weekPlan = { ...state.weekPlan, ...saved, conflicts: built.conflicts };
+    });
   }
 
   function queueChange(session, change) {
@@ -426,6 +455,11 @@ function createCoach({
     createState: (setup = {}) => {
       const injuries = (setup.injuries || []).filter((injury) => BODY_PARTS.includes(injury.body_part));
       return {
+        // interview: getting to know the user and building the weekly plan; training: a workout.
+        mode: setup.mode === "interview" ? "interview" : "training",
+        profile: setup.profile || null,
+        weekPlan: setup.weekPlan || null,
+        pendingWeekProfile: null,
         plan: null, runner: null, pendingProfile: null, profileToConfirm: false, planRejected: false, advanceAfterTurn: false, change: null, missing: [],
         injuries,
         // Newest first; the last one goes to the prompt, all of them to progression and variety.
@@ -449,7 +483,17 @@ function createCoach({
     }),
 
     buildMessages(session, { userText }) {
-      const { plan, runner, injuries, lastWorkout } = session.coachState;
+      const { plan, runner, injuries, lastWorkout, mode, profile } = session.coachState;
+      if (mode === "interview") {
+        const messages = [
+          { role: "system", content: `${INTERVIEW_PROMPT}\n${PAIN_RULES}` },
+          ...(profile ? [{ role: "system", content: knownProfileContext(profile) }] : []),
+          ...(injuries.length ? [{ role: "system", content: injuryContext(injuries) }] : []),
+          ...session.history,
+        ];
+        if (userText === null) messages.push({ role: "user", content: "[EVENT: session_start]" });
+        return messages;
+      }
       const messages = [
         { role: "system", content: SYSTEM_PROMPT },
         ...(lastWorkout && !plan ? [{ role: "system", content: lastWorkoutContext(lastWorkout) }] : []),
@@ -462,6 +506,23 @@ function createCoach({
     },
 
     markers: [
+      {
+        pattern: /\[PROFILE ([^\]]*)\]/g,
+        handle(session, [, fields]) {
+          const state = session.coachState;
+          if (state.mode !== "interview") return;
+          const profile = parseProfileMarker(fields);
+          if (!profile) {
+            engine.record(session, "week.profile_rejected", { marker: fields });
+            console.warn(`Sesja ${session.id}: znacznik profilu bez poprawnych pól („${fields}”).`);
+            state.planRejected = true;
+            return;
+          }
+          state.pendingWeekProfile = profile;
+          state.profileToConfirm = true;
+          engine.record(session, "week.profile", { profile });
+        },
+      },
       {
         pattern: PLAN_MARKER,
         handle(session, [, fields]) {
@@ -525,6 +586,14 @@ function createCoach({
     // "Gotowe", "dalej", "zrobiłem 8": the step ends in code, without the model.
     beforeTurn(session, userText) {
       const state = session.coachState;
+      if (state.pendingWeekProfile) {
+        const profile = state.pendingWeekProfile;
+        state.pendingWeekProfile = null;
+        if (!yesIntent(userText)) return undefined;
+        buildWeek(session, profile);
+        engine.speakText(session, describeWeek(state.weekPlan));
+        return { handled: true };
+      }
       if (state.pendingProfile && !state.plan) {
         if (yesIntent(userText)) {
           buildPlan(session, state.pendingProfile);
@@ -598,7 +667,9 @@ function createCoach({
       // Without a plan the user would wait for one forever: ask again instead.
       if (state.planRejected) {
         state.planRejected = false;
-        await engine.speakText(session, "Nie udało mi się ułożyć planu. Powiedz jeszcze raz: cel, doświadczenie, sprzęt i ile masz czasu.");
+        await engine.speakText(session, state.mode === "interview"
+          ? "Nie udało mi się ułożyć planu. Powiedz jeszcze raz: cel, doświadczenie, ile dni w tygodniu, ile minut i jaki masz sprzęt."
+          : "Nie udało mi się ułożyć planu. Powiedz jeszcze raz: cel, doświadczenie, sprzęt i ile masz czasu.");
         return;
       }
       if (state.change) {
@@ -615,11 +686,14 @@ function createCoach({
       }
       if (state.profileToConfirm) {
         state.profileToConfirm = false;
-        await engine.speakText(session, describeProfile(state.pendingProfile, state.recovery));
+        await engine.speakText(session, state.pendingWeekProfile
+          ? describeInterview(state.pendingWeekProfile)
+          : describeProfile(state.pendingProfile, state.recovery));
       }
     },
 
     workoutEvent,
+    weekEvent,
   };
 }
 
@@ -638,4 +712,4 @@ function holdPainDuringBreak(coach) {
   };
 }
 
-module.exports = { createCoach, holdPainDuringBreak, parsePlanMarker, SYSTEM_PROMPT };
+module.exports = { createCoach, holdPainDuringBreak, parsePlanMarker, SYSTEM_PROMPT, PAIN_RULES };

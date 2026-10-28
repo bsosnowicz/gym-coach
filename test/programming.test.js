@@ -22,7 +22,7 @@ test("Split: dni i poziom wybierają układ; początkujący najwyżej 4 dni", ()
   assert.deepEqual(chooseSplit({ daysPerWeek: 5, level: "expert" }), { split: "body_part", days: 5 });
   assert.deepEqual(chooseSplit({ daysPerWeek: 6, level: "intermediate" }), { split: "push_pull_legs", days: 6 });
   assert.deepEqual(chooseSplit({ daysPerWeek: 9, level: "expert" }), { split: "push_pull_legs", days: 6 });
-  assert.deepEqual(chooseSplit({ daysPerWeek: 1, level: "intermediate" }), { split: "full_body", days: 2 });
+  assert.deepEqual(chooseSplit({ daysPerWeek: 1, level: "intermediate" }), { split: "full_body", days: 1 });
 });
 
 test("Tydzień: dni splitu się powtarzają", () => {

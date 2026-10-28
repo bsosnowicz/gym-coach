@@ -41,7 +41,8 @@ const RECOVERY_HOURS = 48;
 
 // Rule 1: the split for this many days and this level.
 function chooseSplit({ daysPerWeek, level }) {
-  const days = Math.max(2, Math.min(MAX_DAYS, Math.round(daysPerWeek) || 3));
+  // A 7th day is always rest; one day a week is a full body day.
+  const days = Math.max(1, Math.min(MAX_DAYS, Math.round(daysPerWeek) || 3));
   if (level === "beginner") return { split: days <= 3 ? "full_body" : "upper_lower", days: Math.min(days, BEGINNER_MAX_DAYS) };
   if (days <= 3) return { split: level === "expert" && days === 3 ? "push_pull_legs" : "full_body", days };
   if (days === 4) return { split: "upper_lower", days };
@@ -59,7 +60,7 @@ const WEEKDAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 const WEEKDAY_NAMES = { mon: "poniedziałek", tue: "wtorek", wed: "środa", thu: "czwartek", fri: "piątek", sat: "sobota", sun: "niedziela" };
 // Days spread across the week when the user named none.
 const DEFAULT_WEEKDAYS = {
-  2: ["mon", "thu"], 3: ["mon", "wed", "fri"], 4: ["mon", "tue", "thu", "fri"],
+  1: ["wed"], 2: ["mon", "thu"], 3: ["mon", "wed", "fri"], 4: ["mon", "tue", "thu", "fri"],
   5: ["mon", "tue", "wed", "fri", "sat"], 6: ["mon", "tue", "wed", "thu", "fri", "sat"],
 };
 

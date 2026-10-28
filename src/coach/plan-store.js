@@ -30,7 +30,7 @@ function toPlan(row) {
   if (!row) return null;
   return {
     id: row.id, split: row.split_type, intensity: row.intensity, goal: row.goal, level: row.level,
-    variant: row.variant, parentId: row.parent_id || null, active: row.active, days: row.days || [],
+    variant: row.variant, parentId: row.parent_id || null, active: row.active, days: row.days || [], profile: row.profile || {},
     startedAt: row.started_at, createdAt: row.created_at,
   };
 }
@@ -67,7 +67,7 @@ function createPlanStore({ url, serviceKey, userId, fetchImpl = fetch, log = con
       body: JSON.stringify([{
         user_id: userId, split_type: plan.split, intensity: plan.intensity, goal: plan.goal ?? null,
         level: plan.level ?? null, variant: plan.variant || "A", parent_id: plan.parentId || null,
-        active: true, days: plan.days, started_at: plan.startedAt || new Date().toISOString(),
+        active: true, days: plan.days, profile: plan.profile || {}, started_at: plan.startedAt || new Date().toISOString(),
       }]),
     });
     return toPlan((await response.json())[0]);

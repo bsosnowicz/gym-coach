@@ -5,7 +5,8 @@
 -- training_plans: one row per plan variant. A new interview gives variant A;
 -- changes made during a workout give B (C, …) with parent_id pointing at A,
 -- and A stays. Only one plan per user is active at a time.
--- days: [{ weekday, type, focus, exercises: [{ id, sets, reps, seconds, restS }] }].
+-- days: [{ weekday, type, focus, exercises: [{ id, sets, reps, seconds, restS }] }];
+-- profile: what the plan was built for ({ goal, level, equipment, minutes }).
 
 create table if not exists public.user_profiles (
   user_id text primary key,
@@ -36,9 +37,13 @@ create table if not exists public.training_plans (
   parent_id uuid references public.training_plans (id) on delete cascade,
   active boolean not null default true,
   days jsonb not null default '[]'::jsonb,
+  profile jsonb not null default '{}'::jsonb,
   started_at timestamptz not null default now(),
   created_at timestamptz not null default now()
 );
+
+-- Also when the table exists from an earlier copy of this file without the column.
+alter table public.training_plans add column if not exists profile jsonb not null default '{}'::jsonb;
 
 create index if not exists training_plans_user_created_idx
   on public.training_plans (user_id, created_at desc);
