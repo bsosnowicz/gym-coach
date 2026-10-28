@@ -1,0 +1,26 @@
+{
+  "name": "gym-coach",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Gym Coach: trener silowy AI z rozmowa glosowa i awatarem.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev:web": "vite",
+    "build:web": "vite build",
+    "test": "node --test test/*.test.js",
+    "smoke": "node scripts/smoke.js",
+    "check": "find . -name '*.js' -not -path './node_modules/*' -not -path './public/*' -not -path './web/*' -exec node --check {} +"
+  },
+  "dependencies": {
+    "livekit-client": "2.22.3",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.1.2",
+    "vite": "^8.3.5"
+  }
+}

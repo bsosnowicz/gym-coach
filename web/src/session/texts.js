@@ -1,0 +1,61 @@
+// Every text of the session page in one place. An app passes its own keys
+// (e.g. { finished: "Trening zakończony." }) and keeps the rest; the matching
+// spoken texts are in DEFAULT_TEXTS of src/engine/session-control.js.
+export const SESSION_TEXTS = {
+  // Status line on the video.
+  idle: "Naciśnij Start, żeby zacząć rozmowę.",
+  connecting: "Łączę z awatarem…",
+  reconnecting: "Krótka przerwa — odnawiam połączenie z awatarem…",
+  greeting: "Awatar się wita…",
+  speaking: "Awatar mówi…",
+  listening: "Słucham.",
+  paused: "Przerwa.",
+  resumed: "Wracamy.",
+  farewell: "Awatar się żegna…",
+  finished: "Sesja zakończona. Naciśnij Start, żeby zacząć od nowa.",
+  disconnected: "Połączenie z awatarem zostało przerwane.",
+  providerError: (message) => `Usługa chwilowo niedostępna. ${message || ""}`.trim(),
+  startFailed: (message) => `Nie udało się zacząć: ${message}`,
+  // Buttons and hints.
+  start: "Start",
+  pause: "Przerwa",
+  mute: "Wycisz mikrofon",
+  unmute: "Włącz mikrofon",
+  stop: "Stop",
+  voiceHint: "Głosem: „zróbmy przerwę”, „kończymy”.",
+  breakTitle: "Przerwa",
+  breakContinue: "Wracamy",
+  breakHint: "Możesz też powiedzieć: „kontynuujmy” albo „kończymy”.",
+  endTitle: "Na pewno kończymy?",
+  endFinish: "Tak, kończymy",
+  endContinue: "Nie, wracamy",
+  endHint: "Możesz też powiedzieć: „tak, kończymy” albo „nie, wracamy”.",
+  audioUnlock: "Nie słychać awatara? Kliknij, żeby włączyć dźwięk",
+  // The microphone start hangs (public/mic-start.js).
+  micPermissionTitle: "Zezwól na mikrofon",
+  micPermissionText: "Przeglądarka pyta o dostęp do mikrofonu — zezwól w okienku (na komputerze: przy pasku adresu). Bez tego awatar Cię nie usłyszy.",
+  micAudioTitle: "Włącz mikrofon",
+  micAudioText: "Przeglądarka wstrzymała dźwięk do pierwszego kliknięcia. Kliknij przycisk, a awatar zacznie Cię słyszeć.",
+  micAudioButton: "Włącz mikrofon",
+  // The voice check before Start (components/VoiceCheck.jsx).
+  checkTitle: "Sprawdźmy, czy dobrze Cię słychać",
+  checkIntro: "Zmierzę, jak głośno dochodzi Twój głos, i ustawię pod niego mikrofon. Po kliknięciu „Sprawdź” powiedz normalnym głosem:",
+  checkPhrase: "Cześć, zaczynamy!",
+  checkStart: "Sprawdź",
+  checkSkip: "Pomiń",
+  checkCancel: "Przerwij",
+  checkAgain: "Sprawdź jeszcze raz",
+  checkGo: "Zaczynamy",
+  checkOpening: "Włączam mikrofon. Jeśli przeglądarka zapyta o dostęp, zezwól.",
+  checkCountdown: (seconds) => `Za chwilę mówisz… ${seconds}`,
+  checkListening: (voiced) => (voiced ? "Słyszę…" : "Słucham…"),
+  checkRecent: (outcome) => (outcome === "weak" ? "Ostatnio było Cię słychać, ale cicho." : "Ostatnio było Cię dobrze słychać."),
+  checkRecentHint: "Ten sam mikrofon i to samo miejsce? Możemy zaczynać.",
+  checkOk: "Słyszę Cię dobrze.",
+  checkWeak: "Słyszę Cię, ale cicho. Podejdź bliżej albo użyj słuchawek z mikrofonem.",
+  checkSilent: "Nie słyszę Cię. Sprawdź, czy mikrofon nie jest wyciszony i czy przeglądarka ma do niego dostęp.",
+  checkError: (name) => (name === "NotAllowedError"
+    ? "Przeglądarka nie dała dostępu do mikrofonu. Zezwól na niego przy pasku adresu i spróbuj jeszcze raz."
+    : `Nie udało się włączyć mikrofonu (${name || "nieznany błąd"}).`),
+  devLog: "Dziennik",
+};
