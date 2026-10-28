@@ -30,6 +30,7 @@ const { createElevenLabsTts } = require("./src/adapters/tts/elevenlabs");
 const { createGroqWhisperStt } = require("./src/adapters/stt/groq-whisper");
 const { createLiveAvatarLite } = require("./src/adapters/avatar/liveavatar-lite");
 const { createCoach, holdPainDuringBreak } = require("./src/coach");
+const { guardSessionEnd } = require("./src/coach/end-guard");
 const { createCueSpeaker } = require("./src/coach/cues");
 const { createInjuryStore } = require("./src/coach/injury-store");
 const { createWorkoutLog } = require("./src/coach/workout-log");
@@ -68,12 +69,12 @@ console.log(injuries
 
 // Break and end of the session (voice and buttons) wrap the app's coach;
 // texts can be passed here to fit the app ("trening", "lekcja").
-const coach = holdPainDuringBreak(engine.withSessionControl(createCoach({ voiceId: process.env.ELEVENLABS_VOICE_ID, injuries, workoutLog, plans }), {
+const coach = holdPainDuringBreak(guardSessionEnd(engine.withSessionControl(createCoach({ voiceId: process.env.ELEVENLABS_VOICE_ID, injuries, workoutLog, plans }), {
   texts: {
     pause: "Dobrze, robimy przerwę w treningu. Powiedz, kiedy chcesz kontynuować.",
     farewell: "Dzięki za wspólną rozmowę o treningu. Do zobaczenia!",
   },
-}));
+})));
 
 // Built on first use, so the server starts (and says what is missing) even
 // with an incomplete .env.

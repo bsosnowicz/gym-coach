@@ -10,6 +10,7 @@ const { recoveryFor, agoText, RECOVERY_HOURS } = require("./schedule");
 const { normalizeWords } = require("../engine/words");
 const { INTERVIEW_PROMPT, knownProfileContext, parseProfileMarker, describeInterview, weekProfile } = require("./interview");
 const { equipmentFromWords, userTexts } = require("./equipment-mentions");
+const { breakOverIntent } = require("./end-guard");
 const { buildWeekPlan, describeWeek, planFromDay, dayFor, weekdayOf, describeToday, weekContext } = require("./week-plan");
 const { WEEKDAYS, WEEKDAY_NAMES } = require("./programming");
 
@@ -824,7 +825,9 @@ function createCoach({
         if (noIntent(userText)) return runner.adjust(false) && { handled: true };
       }
       // After the rest: "tak", "jestem", "dawaj" start the set as well as "gotowe".
-      const ready = runner?.progress.phase === "ready_set" && (yesIntent(userText) || READY_WORDS.test(normalizeWords(userText).join(" ")));
+      const ready = (runner?.progress.phase === "ready_set" && (yesIntent(userText) || READY_WORDS.test(normalizeWords(userText).join(" "))))
+        // "Koniec przerwy" during a rest between sets: the next set, not the end of the session.
+        || (["rest", "ready_set"].includes(runner?.progress.phase) && breakOverIntent(userText));
       const intent = runner && (advanceIntent(userText) || (ready ? { reps: null, kg: null } : null));
       if (!intent || !runner.advance(intent)) return undefined;
       engine.record(session, "workout.advance", { text: userText, reps: intent.reps });
