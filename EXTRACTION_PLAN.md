@@ -394,5 +394,21 @@ progi czasowe, `HOST`, `PORT`, opcjonalnie `SUPABASE_*`), bez `COACH_*`. Nowe:
   - 15/15 plików testowych i build przechodzą; prawdziwy model odpowiedział jako Gym Coach;
   - Chromium: strona na 3001, dwie podmiany i Stop podczas przełączania (atrapy transportu);
   - pełna rozmowa głosowa z rzeczywistym awatarem pozostaje do sprawdzenia w interfejsie.
-- [ ] 03 (w gym-coach, nie w szablonie): kamera i `yolo-backend` z yoga-startup;
-      testy `yolo-backend/tests` bez scenariuszy jogi
+- [x] 03 (w gym-coach, nie w szablonie): kamera i `yolo-backend` z yoga-startup — 2026-10-28
+  - [x] 1/5 `yolo-backend` bez asan; `standing.json` z jedną regułą (barki nad biodrami);
+        9 testów Pythona bez scenariuszy jogi
+  - [x] 2/5 panel kamery (przycisk, wybór urządzenia, lustrzany podgląd, nakładka);
+        `YOLO_POSE_WS_URL` → `GET /api/config` → `lazy()`; nagłówki wpuszczają kamerę
+        i adres YOLO tylko z ustawionym adresem
+  - [x] 3/5 klatki przez `yolo-stream.js` (adres z `/api/config`), szkielet na podglądzie;
+        bez YOLO sam podgląd z komunikatem
+  - [x] 4/5 `correction-loop.js` (tylko tor YOLO), debouncer i `cue-scheduler` z jogi;
+        `POST /api/session/cue` z bramką na stanie sesji, tekst z pliku scenariusza
+        (`src/coach/cues.js`); cisza w przerwie, oknie końca, pożegnaniu i podmianie awatara
+  - [x] 5/5 149 testów JS, 9 Pythona, build; Chromium ze sztuczną kamerą: prawdziwy
+        `app.py` z atrapą modelu (szkielet, uwaga, korekta do `/api/session/cue`), przerwa
+        (brak korekty), YOLO wyłączony (sam podgląd)
+  - nie przeniesione: `snapshot.js` (migawka do promptu), `yolo-session-log.js`,
+    `camera-framing.js`, strona testowa YOLO — wrócą, gdy będą potrzebne (05–06);
+  - do sprawdzenia na żywo: prawdziwy model YOLO z kamerą i korekta wypowiedziana
+    przez rzeczywistego awatara.

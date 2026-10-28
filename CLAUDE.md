@@ -8,8 +8,9 @@ Gym Coach: trener siłowy AI z rozmową głosową i awatarem. Projekt powstał z
 `avatar-template` 2026-10-28, po etapach 02e i 02g. Silnik i adaptery są identyczne
 z szablonem; domena trenera mieści się w `src/coach/`.
 
-Na etapie 04 trener rozmawia o celu treningu, doświadczeniu i sprzęcie. Kamera,
-YOLO, fazy ruchu i liczenie powtórzeń to kolejne etapy, opisane w README.
+Trener rozmawia o celu treningu, doświadczeniu i sprzęcie (etap 04). Od etapu 03
+opcjonalna kamera wysyła klatki do `yolo-backend`, a uwagi ze scenariusza `standing`
+wypowiada awatar jako krótkie korekty. Fazy ruchu i liczenie powtórzeń to etap 05.
 Repo: `bsosnowicz/gym-coach`, katalog `~/projects/gym-coach`.
 
 ## Uruchomienie i testy
@@ -24,6 +25,7 @@ Repo: `bsosnowicz/gym-coach`, katalog `~/projects/gym-coach`.
 - `src/adapters/{llm,tts,stt,avatar}/` — dostawcy, silnik zna tylko ich kontrakty (`src/engine/ports.js`).
 - `src/coach/` — domena projektu; w szablonie przykładowy rozmówca.
 - `web/src/` — strona React: `session/useSession.js` (sesja bez wyglądu, `start(setup)`, `onEvent` na własne zdarzenia SSE), `session/texts.js` (wszystkie napisy), `components/` (scena z wideo, nakładka przerwy, okno zakończenia, przyciski, transkrypcja, dziennik), `screens/SessionScreen.jsx` (złożona strona).
+- `public/camera/` + `web/src/camera/CameraPanel.jsx` — opcjonalna kamera (etap 03): strumień do YOLO, szkielet, pętla korekty; `src/coach/cues.js` — trasa korekty i bramka; `yolo-backend/` — serwis Python ze scenariuszami.
 - `public/` — moduły przeglądarki bez Reacta, wspólne z language-coach: `session/lite-adapter.js` (LiveKit, SSE, mikrofon), `stt.js`, `api.js`, `ui/log.js`, `styles.css`.
 
 ## Zasady współpracy z użytkownikiem
