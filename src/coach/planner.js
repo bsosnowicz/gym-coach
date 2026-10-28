@@ -9,6 +9,17 @@
 // injured body parts; a slot with nothing that fits is skipped.
 
 const GOALS = ["strength", "muscle", "endurance", "general"];
+
+// The muscles of free-exercise-db (primaryMuscles), as the marker writes them
+// (underscore instead of space), with the name the coach says.
+const FOCUS_MUSCLES = {
+  abdominals: "brzuch", abductors: "odwodziciele ud", adductors: "przywodziciele ud", biceps: "biceps",
+  calves: "łydki", chest: "klatka piersiowa", forearms: "przedramiona", glutes: "pośladki",
+  hamstrings: "tył uda", lats: "najszersze grzbietu", lower_back: "dolny odcinek pleców", middle_back: "środek pleców",
+  neck: "szyja", quadriceps: "przód uda", shoulders: "barki", traps: "kaptury", triceps: "triceps",
+};
+// How many exercises of a short plan the focus may take: the rest stays full-body.
+const FOCUS_EXERCISES = 2;
 const EQUIPMENT_PRESETS = {
   gym: {
     equipment: ["body_only", "dumbbell", "barbell", "kettlebell", "cable", "machine", "band"],
@@ -89,7 +100,7 @@ function filtersFor({ equipment, level }, { avoid = [], missing = [] } = {}) {
 // profile: { goal, level, equipment, minutes } from the interview; avoid: injuries,
 // body part ids or { part, severity } (src/coach/exercises.js, excludedBy).
 // history: earlier workouts from the journal, newest first (progression).
-function planWorkout(catalog, { goal, level, equipment, minutes }, { avoid = [], history = [] } = {}) {
+function planWorkout(catalog, { goal, level, equipment, minutes, focus = null }, { avoid = [], history = [] } = {}) {
   if (!GOALS.includes(goal)) throw new Error(`Plan: nieznany cel „${goal}”`);
   if (!EQUIPMENT_PRESETS[equipment]) throw new Error(`Plan: nieznany sprzęt „${equipment}”`);
   const prescription = prescriptionFor(goal, level);
@@ -113,8 +124,27 @@ function planWorkout(catalog, { goal, level, equipment, minutes }, { avoid = [],
     if (pick) chosen.push(pick);
   }
 
+  // Focus on a muscle: up to two exercises with it as the main muscle go first
+  // (worked while fresh) and push out the least important slots. Only what fits
+  // the injuries — with nothing safe the plan stays full-body and says so.
+  let focusAvailable = true;
+  if (focus) {
+    const muscle = focus.replace("_", " ");
+    const onFocus = (exercise) => exercise.primaryMuscles.includes(muscle);
+    const extra = candidates
+      .filter((exercise) => onFocus(exercise) && !chosen.some((item) => item.id === exercise.id))
+      .sort((a, b) => (lastSession.has(a.id) ? 1 : 0) - (lastSession.has(b.id) ? 1 : 0)
+        || (a.mechanic === "compound" ? 0 : 1) - (b.mechanic === "compound" ? 0 : 1));
+    const already = chosen.filter(onFocus);
+    const added = extra.slice(0, Math.max(0, FOCUS_EXERCISES - already.length));
+    focusAvailable = already.length + added.length > 0;
+    const rest = chosen.filter((exercise) => !onFocus(exercise)).slice(0, Math.max(0, wanted - already.length - added.length));
+    chosen.splice(0, chosen.length, ...already, ...added, ...rest);
+  }
+
   return {
-    profile: { goal, level, equipment, minutes },
+    profile: { goal, level, equipment, minutes, focus },
+    focusAvailable,
     avoid,
     warmup: { durationS: WARMUP_S },
     exercises: chosen.map((exercise) => applyProgression(toPlanItem(exercise, prescription, level), exercise, history)),
@@ -127,8 +157,12 @@ const SETS_WORD = (n) => (n === 1 ? "seria" : n < 5 ? "serie" : "serii");
 function describePlan(plan) {
   const items = plan.exercises.map((item) =>
     `${item.name}, ${item.sets} ${SETS_WORD(item.sets)} po ${item.reps ? `${item.reps} powtórzeń` : `${item.seconds} sekund`}`);
-  return `Mam plan na dziś. Najpierw pięć minut rozgrzewki, potem: ${items.join("; ")}. `
+  const { focus } = plan.profile;
+  const focusText = !focus ? ""
+    : plan.focusAvailable ? `Skupiamy się na: ${FOCUS_MUSCLES[focus]}. `
+      : `Na ${FOCUS_MUSCLES[focus]} nie mam dziś ćwiczenia ${plan.avoid.length ? "bezpiecznego przy Twojej kontuzji" : "na Twój sprzęt"}, więc robimy trening ogólny. `;
+  return `Mam plan na dziś. ${focusText}Najpierw pięć minut rozgrzewki, potem: ${items.join("; ")}. `
     + "Plan widzisz na ekranie. Powiedz „gotowe”, kiedy zaczynamy rozgrzewkę.";
 }
 
-module.exports = { planWorkout, describePlan, toPlanItem, filtersFor, GOALS, EQUIPMENT_PRESETS, PRESCRIPTIONS };
+module.exports = { planWorkout, describePlan, toPlanItem, filtersFor, GOALS, EQUIPMENT_PRESETS, PRESCRIPTIONS, FOCUS_MUSCLES };

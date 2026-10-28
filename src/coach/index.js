@@ -1,5 +1,5 @@
 const { buildCatalog } = require("./exercises");
-const { planWorkout, describePlan, toPlanItem, filtersFor, GOALS, EQUIPMENT_PRESETS } = require("./planner");
+const { planWorkout, describePlan, toPlanItem, filtersFor, GOALS, EQUIPMENT_PRESETS, FOCUS_MUSCLES } = require("./planner");
 const { EQUIPMENT, GEAR, LEVELS } = require("./exercises");
 const { createWorkoutRunner, advanceIntent } = require("./workout");
 const { cueBlockedBy } = require("./cues");
@@ -33,7 +33,11 @@ zdaniem i dopisz na końcu dokładnie jeden znacznik:
 gdzie cel to strength (siła), muscle (masa mięśniowa), endurance (kondycja, wytrzymałość)
 albo general (ogólna sprawność); poziom to beginner, intermediate albo expert;
 sprzęt to gym (siłownia), home_dumbbells (dom z hantlami lub kettlebell) albo bodyweight
-(bez sprzętu). Planu nie wymyślaj ani nie wymieniaj ćwiczeń: plan ułoży i przeczyta aplikacja.
+(bez sprzętu). Gdy użytkownik chce popracować nad konkretną partią mięśni, dopisz w znaczniku
+focus=<mięsień>: abdominals (brzuch), abductors, adductors, biceps, calves (łydki), chest (klatka),
+forearms (przedramiona), glutes (pośladki), hamstrings (tył uda, dwugłowe uda), lats (najszersze
+grzbietu), lower_back, middle_back, neck, quadriceps (przód uda, czworogłowe), shoulders (barki),
+traps (kaptury), triceps. Planu nie wymyślaj ani nie wymieniaj ćwiczeń: plan ułoży i przeczyta aplikacja.
 Najkrótszy plan ma 10 minut: gdy ktoś ma mniej czasu, wpisz minutes=10 i powiedz, że zrobicie krótki trening.
 Gdy plan już jest, aplikacja sama zapowiada rozgrzewkę, serie, przerwy, koniec przerwy i zmiany
 ćwiczeń. Nigdy nie zapowiadaj ich sam ani nie mów, które ćwiczenie i seria są teraz, jeśli nie
@@ -83,7 +87,9 @@ function parsePlanMarker(text) {
   const minutes = Math.min(180, Math.max(10, Math.round(Number(fields.minutes))));
   if (!GOALS.includes(fields.goal) || !PLAN_LEVELS.includes(fields.level) || !EQUIPMENT_PRESETS[fields.equipment]) return null;
   if (!Number.isFinite(minutes)) return null;
-  return { goal: fields.goal, level: fields.level, equipment: fields.equipment, minutes };
+  // A focus outside the list is dropped, not the whole plan.
+  const focus = FOCUS_MUSCLES[fields.focus] ? fields.focus : null;
+  return { goal: fields.goal, level: fields.level, equipment: fields.equipment, minutes, focus };
 }
 
 const PHASE_TEXT = {

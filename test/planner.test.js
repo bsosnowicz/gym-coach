@@ -59,7 +59,7 @@ test("Plan: tekst ogłoszenia wymienia ćwiczenia i zaprasza do rozgrzewki", () 
 
 test("Znacznik planu: tylko zamknięte wartości", () => {
   assert.deepEqual(parsePlanMarker("goal=strength level=beginner equipment=home_dumbbells minutes=45"),
-    { goal: "strength", level: "beginner", equipment: "home_dumbbells", minutes: 45 });
+    { goal: "strength", level: "beginner", equipment: "home_dumbbells", minutes: 45, focus: null });
   assert.equal(parsePlanMarker("goal=siła level=beginner equipment=gym minutes=45"), null);
   assert.equal(parsePlanMarker("goal=strength level=beginner equipment=gym minutes=5").minutes, 10, "„5 minut” to najkrótszy plan, nie brak planu");
   assert.equal(parsePlanMarker("goal=strength level=beginner equipment=gym"), null);
@@ -113,4 +113,22 @@ test("Rozmowa: „5 minut” daje najkrótszy plan; błędny znacznik — trener
   const spoken = broken.events.filter((event) => event.stage === "avatar_transcription").map((event) => event.text);
   assert.match(spoken.at(-1), /^Nie udało mi się ułożyć planu\. Powiedz jeszcze raz/);
   await endSession(broken.session);
+});
+
+test("Partia mięśni: focus=hamstrings — ćwiczenia na tył uda na początku, plan tej samej długości; poza listą — bez focusu", () => {
+  const base = { goal: "muscle", level: "expert", equipment: "gym", minutes: 45 };
+  const plain = planWorkout(catalog, base);
+  const focused = planWorkout(catalog, { ...base, focus: "hamstrings" });
+  assert.equal(focused.exercises.length, plain.exercises.length);
+  assert.ok(focused.exercises.slice(0, 2).every((item) => catalog.get(item.id).primaryMuscles.includes("hamstrings")));
+  assert.match(describePlan(focused), /^Mam plan na dziś\. Skupiamy się na: tył uda\. /);
+  assert.equal(parsePlanMarker("goal=muscle level=expert equipment=gym minutes=30 focus=nogi").focus, null);
+  assert.equal(parsePlanMarker("goal=muscle level=expert equipment=gym minutes=30 focus=lower_back").focus, "lower_back");
+});
+
+test("Partia mięśni przy kontuzji (rozmowa z 28.10): tył uda + mocno bolące kolano — nic niebezpiecznego, trener to mówi", () => {
+  const plan = planWorkout(catalog, { goal: "muscle", level: "expert", equipment: "gym", minutes: 30, focus: "hamstrings" }, { avoid: [{ part: "knee_left", severity: "high" }] });
+  assert.equal(plan.focusAvailable, false);
+  assert.ok(plan.exercises.every((item) => !catalog.get(item.id).loads.includes("knee_left")));
+  assert.match(describePlan(plan), /Na tył uda nie mam dziś ćwiczenia bezpiecznego przy Twojej kontuzji, więc robimy trening ogólny\./);
 });
