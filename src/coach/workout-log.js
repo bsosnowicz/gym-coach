@@ -42,14 +42,14 @@ function createWorkoutLog({ url, serviceKey, userId, fetchImpl = fetch, log = co
       return queue;
     },
 
-    // The newest workout of the user, or null.
-    async last() {
+    // The user's newest workouts, newest first: the coach's memory and the base for progression.
+    async recent(limit = 5) {
       try {
-        const response = await request(`workout_sessions?user_id=eq.${user}&select=started_at,finished,profile,exercises,sets&order=started_at.desc&limit=1`);
-        return (await response.json())[0] || null;
+        const response = await request(`workout_sessions?user_id=eq.${user}&select=started_at,finished,profile,exercises,sets&order=started_at.desc&limit=${limit}`);
+        return await response.json();
       } catch (error) {
         log.warn(`Dziennik treningu: odczyt nieudany — ${error.message}`);
-        return null;
+        return [];
       }
     },
   };

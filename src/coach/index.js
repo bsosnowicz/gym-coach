@@ -365,7 +365,9 @@ function createCoach({
       return {
         plan: null, runner: null, planToAnnounce: false, planRejected: false, advanceAfterTurn: false, change: null, missing: [],
         injuries,
-        lastWorkout: setup.lastWorkout || null,
+        // Newest first; the last one goes to the prompt, all of them to progression and variety.
+        history: setup.history || [],
+        lastWorkout: setup.history?.[0] || null,
         startedAt: new Date().toISOString(),
         changes: [],
         // "other" maps to no exercise: the model knows about it, the filter cannot use it.
@@ -409,7 +411,7 @@ function createCoach({
             state.planRejected = true;
             return;
           }
-          state.plan = planWorkout(catalog, profile, { avoid: state.avoid });
+          state.plan = planWorkout(catalog, profile, { avoid: state.avoid, history: state.history });
           state.runner = startRunner(session, state.plan);
           state.planToAnnounce = true;
           engine.record(session, "workout.planned", { profile, exercises: state.plan.exercises.map((item) => item.id) });

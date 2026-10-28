@@ -69,14 +69,16 @@ function summary(completed) {
 }
 
 const ORDINAL = ["pierwsza", "druga", "trzecia", "czwarta", "piąta", "szósta"];
-const target = (item) => (item.reps ? `${item.reps} powtórzeń` : `${item.seconds} sekund`);
+const kgText = (kg) => `${String(kg).replace(".", ",")} kg`;
+const target = (item) => `${item.reps ? `${item.reps} powtórzeń` : `${item.seconds} sekund`}${item.kg ? ` na ${kgText(item.kg)}` : ""}`;
 const restText = (seconds) => (seconds >= 120 && seconds % 60 === 0 ? `${seconds / 60} minuty` : `${seconds} sekund`);
 
 // Fixed texts: what the coach says at each step, without a model call.
 const SAY = {
   warmup: () => "Zaczynamy od rozgrzewki: pięć minut lekkiego ruchu, krążenia ramion i bioder, kilka przysiadów bez obciążenia. Powiedz „gotowe”, kiedy skończysz.",
+  // item.progress: what changed since last time (src/coach/progression.js).
   firstSet: (item, number, total) =>
-    `Ćwiczenie ${number} z ${total}: ${item.name}. Seria pierwsza z ${item.sets}, ${target(item)}. Powiedz „gotowe” po serii.`,
+    `Ćwiczenie ${number} z ${total}: ${item.name}.${item.progress ? ` ${item.progress}` : ""} Seria pierwsza z ${item.sets}, ${target(item)}. Powiedz „gotowe” po serii.`,
   rest: (item, seconds, next) =>
     `Seria zaliczona. Przerwa ${restText(seconds)}${next ? `, potem ${next}` : ""}.`,
   nextSet: (item, setIndex) =>

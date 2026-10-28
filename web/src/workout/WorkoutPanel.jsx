@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 const TARGET = (item) => (item.reps ? `${item.reps} powtórzeń` : `${item.seconds} s`);
-const SETS = (item) => `${item.sets} × ${item.reps ? `${item.reps} powt.` : `${item.seconds} s`}`;
+const SETS = (item) => `${item.sets} × ${item.reps ? `${item.reps} powt.` : `${item.seconds} s`}${item.kg ? ` · ${String(item.kg).replace(".", ",")} kg` : ""}`;
 
 // Ticks while a rest counts down; the server sends the time left, not a clock reading.
 function useRestLeft(progress, receivedAt) {

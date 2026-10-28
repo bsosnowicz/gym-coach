@@ -50,8 +50,8 @@ test("Dziennik: bez SUPABASE_* go nie ma; upsert po session_id, zapisy po kolei;
   assert.deepEqual(calls.map((call) => call.body[0].finished), [false, true]);
   assert.equal(calls[1].body[0].user_id, "u1");
 
-  assert.equal((await journal.last()).finished, true);
-  assert.match(calls[2].url, /workout_sessions\?user_id=eq\.u1&.*order=started_at\.desc&limit=1$/);
+  assert.equal((await journal.recent())[0].finished, true);
+  assert.match(calls[2].url, /workout_sessions\?user_id=eq\.u1&.*order=started_at\.desc&limit=5$/);
 });
 
 test("Rozmowa: dziennik dostaje plan, serie, zmiany i koniec; poprzedni trening trafia do promptu", async () => {
@@ -63,7 +63,7 @@ test("Rozmowa: dziennik dostaje plan, serie, zmiany i koniec; poprzedni trening 
   const coach = createCoach({ voiceId: "v", catalog: buildCatalog(), engine, workoutLog });
   const { session, events } = await liveSession({ llm, coach });
   session.coachState = coach.createState({
-    lastWorkout: { started_at: "2026-10-27T10:00:00Z", finished: false, exercises: [{ name: "pompki", sets: 3 }], sets: [{ id: "Pushups" }] },
+    history: [{ started_at: "2026-10-27T10:00:00Z", finished: false, exercises: [{ name: "pompki", sets: 3 }], sets: [{ id: "Pushups" }] }],
   });
   const say = async (text) => { await runTurn(session, text); for (let i = 0; i < 12; i += 1) await tick(); };
 

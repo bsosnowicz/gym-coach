@@ -42,6 +42,8 @@ const SLOTS = [
   ["elbow_flexion", "elbow_extension"],
 ];
 
+const { applyProgression } = require("./progression");
+
 const WARMUP_S = 300;
 // Rough time per set including the change-over, for fitting the session length.
 const WORK_PER_SET_S = 45;
@@ -86,7 +88,8 @@ function filtersFor({ equipment, level }, { avoid = [], missing = [] } = {}) {
 
 // profile: { goal, level, equipment, minutes } from the interview; avoid: injuries,
 // body part ids or { part, severity } (src/coach/exercises.js, excludedBy).
-function planWorkout(catalog, { goal, level, equipment, minutes }, { avoid = [] } = {}) {
+// history: earlier workouts from the journal, newest first (progression).
+function planWorkout(catalog, { goal, level, equipment, minutes }, { avoid = [], history = [] } = {}) {
   if (!GOALS.includes(goal)) throw new Error(`Plan: nieznany cel „${goal}”`);
   if (!EQUIPMENT_PRESETS[equipment]) throw new Error(`Plan: nieznany sprzęt „${equipment}”`);
   const prescription = prescriptionFor(goal, level);
@@ -109,7 +112,7 @@ function planWorkout(catalog, { goal, level, equipment, minutes }, { avoid = [] 
     profile: { goal, level, equipment, minutes },
     avoid,
     warmup: { durationS: WARMUP_S },
-    exercises: chosen.map((exercise) => toPlanItem(exercise, prescription, level)),
+    exercises: chosen.map((exercise) => applyProgression(toPlanItem(exercise, prescription, level), exercise, history)),
   };
 }
 

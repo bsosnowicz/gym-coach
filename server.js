@@ -163,8 +163,8 @@ const ROUTES = {
       coach,
       // Read before the greeting, so the plan and the first question already know them.
       setup: await (async () => {
-        const [active, lastWorkout] = await Promise.all([injuries?.active() ?? [], workoutLog?.last() ?? null]);
-        return { injuries: active, lastWorkout };
+        const [active, history] = await Promise.all([injuries?.active() ?? [], workoutLog?.recent() ?? []]);
+        return { injuries: active, history };
       })(),
       options: {
         firstTokenTimeoutMs: envNumber("LLM_FIRST_TOKEN_TIMEOUT_MS", 8000),
