@@ -119,9 +119,11 @@ const SAY = {
 };
 
 // deps: speak(text), publish(), record(type, payload), canSpeakNow() — false
-// while the coach or the user is talking; timers and clock for the tests.
+// while the coach or the user is talking; finishNote() — said after the
+// summary (a saved plan variant), so a second line does not cut it off;
+// timers and clock for the tests.
 function createWorkoutRunner(plan, {
-  speak, publish, record = () => {}, canSpeakNow = () => true,
+  speak, publish, record = () => {}, canSpeakNow = () => true, finishNote = () => "",
   now = () => Date.now(), setTimer = setTimeout, clearTimer = clearTimeout,
 }) {
   const progress = { phase: "ready", exerciseIndex: 0, setIndex: 0, restEndsAt: null, completed: [] };
@@ -131,6 +133,7 @@ function createWorkoutRunner(plan, {
   let pendingTimer = null;
 
   const current = () => plan.exercises[progress.exerciseIndex];
+  const withNote = (text) => [text, finishNote()].filter(Boolean).join(" ");
 
   // A step announcement waits until nobody talks (up to a limit), so the rest
   // timer does not cut off the coach answering a question.
@@ -225,7 +228,7 @@ function createWorkoutRunner(plan, {
     if (lastSet && progress.exerciseIndex + 1 >= plan.exercises.length) {
       progress.phase = "done";
       progress.restEndsAt = null;
-      say(SAY.done(progress.completed));
+      say(withNote(SAY.done(progress.completed)));
       publish();
       return;
     }
@@ -250,7 +253,7 @@ function createWorkoutRunner(plan, {
     if (progress.exerciseIndex + 1 >= plan.exercises.length) {
       progress.phase = "done";
       progress.restEndsAt = null;
-      say(`${lead}${how === "skip" ? SAY.lastSkipped(item, progress.completed) : `${SAY.shortened(item)} ${SAY.done(progress.completed)}`}`);
+      say(withNote(`${lead}${how === "skip" ? SAY.lastSkipped(item, progress.completed) : `${SAY.shortened(item)} ${SAY.done(progress.completed)}`}`));
       publish();
       return;
     }

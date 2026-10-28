@@ -97,7 +97,9 @@ jak się dziś czuje i czy ma tyle czasu co zwykle. Gdy jest gotowy zacząć, do
 gdy ma dziś mniej czasu: [TODAY minutes=<minuty>]; gdy chce zrobić inny dzień planu:
 [TODAY day=<mon|tue|wed|thu|fri|sat|sun>]. Planu nie wymyślaj ani nie wymieniaj ćwiczeń: przeczyta
 je aplikacja. Gdy chce zmienić cały plan (inny cel, inne dni, nowy wywiad), a trening jeszcze się
-nie zaczął albo już się skończył, dopisz [NEW_PLAN].`;
+nie zaczął albo już się skończył, dopisz [NEW_PLAN]. Zmiany ćwiczeń w trakcie treningu aplikacja zapisuje
+jako kolejny wariant planu (B, C…), a poprzedni zostaje; gdy użytkownik chce wrócić do innego wariantu
+(„wróć do wariantu A”, „poprzednia wersja planu” to A), dopisz [VARIANT name=<litera>].`;
 
 const WEEK_PROMPT = `${PERSONA}\n${WEEK_DAY_RULES}\n${TRAINING_RULES}\n${PAIN_RULES}\n${CAMERA_RULES}\nWiadomość "[EVENT: session_start]" oznacza początek sesji: przedstaw się krótko jako Gym Coach, powiedz, co dziś w planie, i zapytaj, jak się czuje.`;
 
@@ -165,6 +167,9 @@ function lastWorkoutContext(last) {
 
 // What the journal keeps besides sets: how the plan changed during the session.
 const CHANGE_EVENTS = new Set(["workout.replaced", "workout.skipped", "workout.removed", "workout.fewer_sets"]);
+// Changes that make a new variant of the weekly plan; skipping or fewer sets is for today only.
+const VARIANT_EVENTS = new Set(["workout.replaced", "workout.removed"]);
+const nextLetter = (letters) => String.fromCharCode(Math.max(...letters.map((letter) => letter.charCodeAt(0))) + 1);
 
 // Timers of a session that has ended must not keep the process (or a test) alive.
 const unrefTimer = (fn, ms) => {
@@ -256,6 +261,74 @@ function createCoach({
     engine.speakText(session, describeToday(state.plan));
   }
 
+  // A change of exercises in a day of the weekly plan: the plan as it is now
+  // becomes variant B (C, …) and A stays; on a variant the variant is
+  // overwritten. Saved in the order of changes; the user hears it at the end.
+  function saveTodayVariant(session) {
+    const state = session.coachState;
+    const { weekPlan, plan } = state;
+    const at = weekPlan.days.findIndex((day) => day.weekday === plan.day.weekday && day.type === plan.day.type);
+    if (at < 0) return;
+    const original = weekPlan.days[at].exercises;
+    const exercises = plan.exercises.map((item) => {
+      const kept = original.find((old) => old.id === item.id);
+      if (kept) return kept;
+      const { kg, progress, ...rest } = item;
+      return rest;
+    });
+    const days = weekPlan.days.map((day, index) => (index === at ? { ...day, exercises } : day));
+    state.variants ??= [weekPlan];
+    let local;
+    if (weekPlan.variant === "A") {
+      local = { ...weekPlan, days, id: null, variant: nextLetter(state.variants.map((item) => item.variant)), parentId: weekPlan.id };
+      state.variants.push(local);
+    } else {
+      local = { ...weekPlan, days };
+      state.variants = state.variants.map((item) => (item.variant === local.variant ? local : item));
+    }
+    state.weekPlan = local;
+    state.variantNote = `Zmiany z dzisiaj zapisałem w planie jako wariant ${local.variant}, a wariant A zostaje. `
+      + "Jeśli wolisz poprzedni, powiedz: wróć do wariantu A.";
+    engine.record(session, "week.variant", { variant: local.variant, day: `${plan.day.weekday}:${plan.day.type}` });
+    engine.emit(session, weekEvent(session));
+    if (!planStore) return;
+    state.variantSave = (state.variantSave || Promise.resolve()).then(async () => {
+      const base = state.storedPlan;
+      if (!base?.id) return;
+      const saved = await planStore.saveVariant(base, days);
+      engine.record(session, saved ? "week.variant_saved" : "week.variant_save_failed", { variant: local.variant });
+      if (!saved) return;
+      state.storedPlan = saved;
+      if (state.weekPlan === local) state.weekPlan = { ...local, id: saved.id, parentId: saved.parentId, variant: saved.variant };
+    });
+  }
+
+  // [VARIANT name=A]: another variant of the plan becomes the active one.
+  async function switchVariant(session, letter) {
+    const state = session.coachState;
+    let target = null;
+    if (planStore && state.storedPlan?.id) {
+      await state.variantSave;
+      const saved = await planStore.activateVariant(state.storedPlan, letter);
+      if (saved) {
+        state.storedPlan = saved;
+        target = { ...saved, conflicts: [] };
+      }
+    } else {
+      target = (state.variants || []).find((item) => item.variant === letter) || null;
+    }
+    if (!target) {
+      engine.record(session, "week.variant_missing", { variant: letter });
+      engine.speakText(session, `Nie mam wariantu ${letter} tego planu. Zostajemy przy wariancie ${state.weekPlan.variant}.`);
+      return;
+    }
+    state.weekPlan = target;
+    state.variantNote = null;
+    engine.record(session, "week.variant_active", { variant: letter });
+    engine.emit(session, weekEvent(session));
+    engine.speakText(session, `Dobrze, wracamy do wariantu ${letter}.`);
+  }
+
   // [NEW_PLAN] or the page's button: the interview again, with the known profile.
   function startInterview(session) {
     const state = session.coachState;
@@ -283,7 +356,9 @@ function createCoach({
     planStore.savePlan(built).then((saved) => {
       engine.record(session, saved ? "week.saved" : "week.save_failed", {});
       // The id lets changes during a workout become variant B of this plan.
-      if (saved && state.weekPlan?.days === built.days) state.weekPlan = { ...state.weekPlan, ...saved, conflicts: built.conflicts };
+      if (!saved) return;
+      state.storedPlan = saved;
+      if (state.weekPlan?.days === built.days) state.weekPlan = { ...state.weekPlan, ...saved, conflicts: built.conflicts };
     });
   }
 
@@ -467,8 +542,10 @@ function createCoach({
       record: (type, payload) => {
         engine.record(session, type, payload);
         if (CHANGE_EVENTS.has(type)) noteChange(session, type, payload);
+        if (VARIANT_EVENTS.has(type) && session.coachState.weekPlan && plan.day) saveTodayVariant(session);
       },
       canSpeakNow: () => !cueBlockedBy(session),
+      finishNote: () => session.coachState.variantNote || "",
       setTimer: unrefTimer,
     });
   }
@@ -504,6 +581,8 @@ function createCoach({
         mode: setup.mode === "interview" ? "interview" : "training",
         profile: setup.profile || null,
         weekPlan: setup.weekPlan || null,
+        // The active plan as the database has it (with its id): the base for variants.
+        storedPlan: setup.weekPlan?.id ? setup.weekPlan : null,
         pendingWeekProfile: null,
         plan: null, runner: null, pendingProfile: null, profileToConfirm: false, planRejected: false, advanceAfterTurn: false, change: null, missing: [],
         injuries,
@@ -599,6 +678,18 @@ function createCoach({
             weekday: WEEKDAYS.includes(weekday) ? weekday : null,
             minutes: minutes ? Math.min(180, Math.max(10, minutes)) : null,
           };
+        },
+      },
+      {
+        pattern: /\[VARIANT name=([A-Za-z])\]/g,
+        handle(session, [, letter]) {
+          const state = session.coachState;
+          if (!state.weekPlan) return;
+          if (state.runner && !["ready", "done"].includes(state.runner.progress.phase)) {
+            engine.record(session, "week.variant_rejected", { phase: state.runner.progress.phase });
+            return;
+          }
+          state.variantAfterTurn = letter.toUpperCase();
         },
       },
       {
@@ -770,6 +861,12 @@ function createCoach({
         const today = state.todayAfterTurn;
         state.todayAfterTurn = null;
         startToday(session, today);
+        return;
+      }
+      if (state.variantAfterTurn) {
+        const letter = state.variantAfterTurn;
+        state.variantAfterTurn = null;
+        await switchVariant(session, letter);
         return;
       }
       if (state.newPlanAfterTurn) {
