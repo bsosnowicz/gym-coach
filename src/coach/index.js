@@ -5,6 +5,9 @@ const { createWorkoutRunner, advanceIntent } = require("./workout");
 const { cueBlockedBy } = require("./cues");
 const { BODY_PARTS, excludedBy } = require("./exercises");
 const { SEVERITIES } = require("./injury-store");
+const { findInjuryMentions } = require("./body-mentions");
+
+const severityRank = (severity) => SEVERITIES.indexOf(severity);
 
 // For speech and the prompt; code matches on the ids only.
 const BODY_PART_NAMES = {
@@ -48,6 +51,10 @@ Ból i kontuzje: gdy użytkownik mówi, że coś go boli albo ma uraz (teraz alb
 także w trakcie wywiadu), odpowiedz krótko i ze spokojem, nie zachęcaj do ćwiczenia przez ból
 i dopisz znacznik [PAIN part=<partia> severity=<low|medium|high>], gdzie partia to dokładnie
 jedna wartość z listy: ${BODY_PART_IDS}. Gdy nie da się jej przypisać, użyj other.
+Liczy się każda wzmianka o kontuzji, urazie, operacji albo rehabilitacji, także bez bólu
+i także podana jako cel („chcę potrenować stabilizację na kontuzjowanym lewym kolanie” to
+[PAIN part=knee_left severity=low]). Nie zapisuj ponownie partii z listy aktywnych dolegliwości,
+chyba że teraz boli mocniej.
 Partia to miejsce, które BOLI, nie ćwiczenie: „boli mnie kolano przy martwym ciągu” to knee_…,
 nie lower_back. Strona: left albo right; gdy nie padła, dopytaj albo wybierz tę, o której mówił
 wcześniej. severity: low — lekki dyskomfort, medium — boli, high — mocno, ostro, „strasznie”.
@@ -196,10 +203,14 @@ function createCoach({
     const name = BODY_PART_NAMES[part];
     engine.record(session, "injury.reported", { part, severity });
     noteChange(session, "injury.reported", { part, severity });
-    console.log(`Sesja ${session.id}: ból — ${name} (${severity || "bez oceny"})${injuryStore ? ", zapisuję w Supabase" : ", Supabase wyłączony — bez zapisu"}.`);
-    if (!state.injuries.some((injury) => injury.body_part === part)) {
-      state.injuries.push({ body_part: part, severity, note: note || null });
-    }
+    // No duplicates: a part already known (this session or active in the database)
+    // is written again only when the pain is stronger now.
+    const known = state.injuries.find((injury) => injury.body_part === part);
+    const stronger = !known || severityRank(severity) > severityRank(known.severity);
+    if (!known) state.injuries.push({ body_part: part, severity, note: note || null });
+    else if (stronger) Object.assign(known, { severity, note: note || known.note });
+    console.log(`Sesja ${session.id}: ból — ${name} (${severity || "bez oceny"})`
+      + `${!stronger ? ", już zapisany wcześniej" : injuryStore ? ", zapisuję w Supabase" : ", Supabase wyłączony — bez zapisu"}.`);
     // A second report of the same part keeps the stronger pain.
     if (part !== "other") {
       const known = state.avoid.find((injury) => injury.part === part);
@@ -207,9 +218,10 @@ function createCoach({
       else if (SEVERITIES.indexOf(severity) > SEVERITIES.indexOf(known.severity)) known.severity = severity;
     }
     // The page's log shows whether it was saved: a silent failure looked like success before.
-    const saving = injuryStore ? injuryStore.report({ bodyPart: part, severity, note, sessionId: session.id }) : Promise.resolve(null);
+    const saving = !stronger ? Promise.resolve("known")
+      : injuryStore ? injuryStore.report({ bodyPart: part, severity, note, sessionId: session.id }) : Promise.resolve(null);
     saving.then((saved) => {
-      if (saved !== null) engine.record(session, saved ? "injury.saved" : "injury.save_failed", { part });
+      if (typeof saved === "boolean") engine.record(session, saved ? "injury.saved" : "injury.save_failed", { part });
       if (saved) console.log(`Sesja ${session.id}: ból — ${name} zapisany w Supabase.`);
       if (!session.closed) engine.emit(session, { stage: "injury_saved", part, name, severity, saved });
     });
@@ -420,6 +432,19 @@ function createCoach({
         const pain = state.pain;
         state.pain = null;
         handlePain(session, { ...pain, note: userText });
+        return;
+      }
+      // The model wrote no [PAIN ...], but the user clearly named an injury: the
+      // safety net catches it (src/coach/body-mentions.js); parts known as bad are skipped.
+      const missed = userText ? findInjuryMentions(userText).filter(({ part, severity }) => {
+        const known = state.injuries.find((injury) => injury.body_part === part);
+        return !known || severityRank(severity) > severityRank(known.severity);
+      }) : [];
+      if (missed.length) {
+        for (const mention of missed) {
+          engine.record(session, "injury.caught_without_marker", mention);
+          handlePain(session, { ...mention, note: userText });
+        }
         return;
       }
       // Without a plan the user would wait for one forever: ask again instead.
