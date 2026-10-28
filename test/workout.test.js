@@ -92,7 +92,7 @@ test("Prowadzenie: rozgrzewka → seria → przerwa z odliczaniem → seria → 
 
   runner.advance();
   assert.equal(runner.snapshot().phase, "done");
-  assert.match(said.at(-1), /trening zrobiony/);
+  assert.equal(said.at(-1), "Trening zrobiony: 2 ćwiczenia, 3 serie, razem 18 powtórzeń. Świetna robota!");
   assert.equal(runner.snapshot().completed, 3);
   assert.equal(runner.advance(), false);
 });

@@ -55,7 +55,7 @@ test("Zmiany: pominięcie w serii przechodzi do następnego ćwiczenia; ostatnie
   assert.match(said.at(-1), /^Dobrze, pomijamy: przysiad ze sztangą\. Ćwiczenie 2 z 2: wyciskanie hantli/);
   run.skip();
   assert.equal(run.snapshot().phase, "done");
-  assert.match(said.at(-1), /To był ostatni punkt, trening zrobiony\./);
+  assert.equal(said.at(-1), "Dobrze, pomijamy: wyciskanie hantli na ławce płaskiej. To był ostatni punkt. Na dziś kończymy.");
   assert.equal(run.skip(), false);
 });
 

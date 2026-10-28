@@ -3,31 +3,21 @@
 // user and body part, active or resolved. Active ones shape the next plan
 // (exercises loading that part are left out) and the coach's prompt.
 //
-// Plain REST (PostgREST) through fetch: the server has no npm dependencies.
-// The service_role key bypasses row-level security, so every request names the
-// user explicitly. Until there are accounts the user is GYM_COACH_USER_ID.
+// Until there are accounts the user is GYM_COACH_USER_ID (src/coach/supabase.js
+// says why every request names the user).
 //
 // A failing database never stops a session: reads come back empty, writes are
 // logged — the current session has already adapted to what the user said.
 
-const REQUEST_TIMEOUT_MS = 5000;
+const { createSupabase } = require("./supabase");
+
 const SEVERITIES = ["low", "medium", "high"];
 const MAX_NOTE_LENGTH = 300;
 
 function createInjuryStore({ url, serviceKey, userId, fetchImpl = fetch, log = console } = {}) {
-  if (!url || !serviceKey) return null;
-  const base = `${url.replace(/\/$/, "")}/rest/v1`;
-
-  async function request(resource, options = {}) {
-    const response = await fetchImpl(`${base}/${resource}`, {
-      ...options,
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, ...(options.headers || {}) },
-    });
-    if (!response.ok) throw new Error(`Supabase ${resource.split("?")[0]}: HTTP ${response.status} ${await response.text()}`);
-    return response;
-  }
-
+  const supabase = createSupabase({ url, serviceKey, fetchImpl });
+  if (!supabase) return null;
+  const { request } = supabase;
   const user = encodeURIComponent(userId);
 
   return {

@@ -1,8 +1,9 @@
 # Gym Coach
 
 Trener siłowy AI, z którym rozmawia się głosem przez awatara LiveAvatar Lite.
-Poznaje cel treningu, doświadczenie i dostępny sprzęt, a następnie dopasowuje rozmowę
-oraz ogólne wskazówki. Działa po polsku, z krótkimi odpowiedziami i jednym pytaniem naraz.
+Poznaje cel treningu, doświadczenie, sprzęt i czas, układa plan i prowadzi trening
+seria po serii: przerwy odlicza sam, zmienia ćwiczenia na prośbę, przy bólu przerywa
+i pamięta kontuzje między sesjami. Działa po polsku, z krótkimi odpowiedziami.
 
 ## Uruchomienie
 
@@ -30,6 +31,47 @@ npm run dev:web
 ```
 
 Vite działa na http://localhost:5174/app/ i przekazuje `/api` do serwera na 3001.
+
+## Trening głosem
+
+1. **Wywiad.** Trener pyta o cel, poziom, sprzęt i czas. Gdy zna odpowiedzi, model pisze
+   znacznik `[PLAN goal=… level=… equipment=… minutes=…]`, a plan układa kod
+   (`src/coach/planner.js`) z katalogu ćwiczeń. Trener czyta plan, panel pod przyciskami go pokazuje.
+2. **Prowadzenie.** „Gotowe” / „dalej” / „zrobiłem 8” kończy rozgrzewkę albo serię — bez
+   modelu (`src/coach/workout.js`). Przerwę odlicza serwer, „gotowe” w przerwie ją skraca.
+   Panel pokazuje bieżące ćwiczenie, serię i odliczanie. Przycisk Przerwa wstrzymuje odliczanie.
+3. **Zmiany.** „Za ciężko” → zamiennik nie trudniejszy; „nie mam ławki” → wymiana wszystkich
+   ćwiczeń z ławką; „pomińmy to”; „zróbmy mniej serii”.
+4. **Ból.** „Boli mnie prawe kolano” → ćwiczenie przerwane od razu, zamiennik i reszta planu
+   bez obciążania kolana; przy ostrym bólu rada, żeby skończyć. Zgłoszenie trafia do Supabase.
+5. **Koniec.** Podsumowanie: ćwiczenia, serie, powtórzenia. Dziennik zapisuje się po każdej
+   serii, więc zostaje też po Stop albo zamkniętej karcie.
+
+Bez kamery liczbę powtórzeń podaje użytkownik („zrobiłem 8”); na etapie 05 może ją podawać YOLO.
+
+### Katalog ćwiczeń
+
+`data/exercises.json` to [free-exercise-db](https://github.com/yuhonas/free-exercise-db)
+(Unlicense — domena publiczna, użycie komercyjne dozwolone), przypięta do commita i odświeżana
+`node scripts/import-exercises.js [commit]`. Zostają tylko fakty (nazwa, sprzęt, mięśnie,
+poziom, typ ruchu), bez opisów i zdjęć. `data/exercises-pl.json` wybiera ćwiczenia (86 na start)
+i dodaje polską nazwę, wzorzec ruchu i wyposażenie (ławka, stojak, drążek…). Wzorzec ruchu
+mówi, które partie ciała ćwiczenie obciąża (`src/coach/exercises.js`) — po tym filtr kontuzji.
+Nowe ćwiczenie: dopisz wpis do nakładki z `id` z bazy; `npm test` sprawdzi, czy istnieje.
+
+### Supabase (kontuzje i dziennik)
+
+Bez `SUPABASE_*` trening działa, tylko niczego nie pamięta między sesjami. Z bazą:
+
+1. Załóż projekt Supabase i uruchom migracje z `supabase/migrations/` (SQL Editor albo
+   `supabase db push`): `user_injuries` i `workout_sessions`.
+2. W `.env`: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (tylko serwer), `GYM_COACH_USER_ID`
+   (do czasu logowania jeden użytkownik).
+3. Przy starcie sesji serwer czyta aktywne kontuzje (plan je omija, trener pyta, jak się
+   czują) i ostatni trening (trener może do niego nawiązać).
+
+Klient to zwykły `fetch` do REST (`src/coach/supabase.js`), bez paczek npm. Awaria bazy
+nie zatrzymuje sesji.
 
 ## Kamera i korekta postawy (opcjonalnie)
 
@@ -112,6 +154,8 @@ sprawdź w interfejsie według instrukcji powyżej.
 
 - [x] 04: aplikacja z szablonu, domena Gym Coacha i polska rozmowa głosowa.
 - [x] 03: kamera i `yolo-backend` z `yoga-startup`, korekta postawy głosem (scenariusz `standing`).
+- [x] 04b: prowadzenie treningu głosem — katalog z free-exercise-db, plan z rozmowy, serie
+  i przerwy, podgląd na żywo, zmiany w locie, ból i kontuzje oraz dziennik w Supabase.
 - [ ] 05: fazy ruchu i liczenie powtórzeń.
 - [ ] 06: scenariusze ćwiczeń i korekty techniki.
 

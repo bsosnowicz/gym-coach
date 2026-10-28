@@ -97,6 +97,18 @@ function injuryContext(injuries) {
     + "Na początku zapytaj krótko, jak się teraz czują.";
 }
 
+// The previous workout from the journal, so the coach can refer to it.
+function lastWorkoutContext(last) {
+  const names = (last.exercises || []).map((item) => item.name).join(", ");
+  const planned = (last.exercises || []).reduce((sum, item) => sum + (item.sets || 0), 0);
+  const day = String(last.started_at || "").slice(0, 10);
+  return `Poprzedni trening (${day}): ${names || "bez planu"}; zrobione serie: ${(last.sets || []).length} z ${planned}`
+    + `${last.finished ? "" : ", nieukończony"}. Możesz krótko do niego nawiązać.`;
+}
+
+// What the journal keeps besides sets: how the plan changed during the session.
+const CHANGE_EVENTS = new Set(["workout.replaced", "workout.skipped", "workout.removed", "workout.fewer_sets"]);
+
 // Timers of a session that has ended must not keep the process (or a test) alive.
 const unrefTimer = (fn, ms) => {
   const timer = setTimeout(fn, ms);
@@ -121,7 +133,11 @@ const COURTESY_WORDS = [
 
 // engine: emit and speakText of src/engine, passed in by server.js; tests pass the same.
 // injuries: src/coach/injury-store.js, or null without Supabase (the session still adapts).
-function createCoach({ voiceId, language = "pl", catalog = buildCatalog(), engine = require("../engine"), injuries: injuryStore = null }) {
+// workoutLog: src/coach/workout-log.js, or null without Supabase.
+function createCoach({
+  voiceId, language = "pl", catalog = buildCatalog(), engine = require("../engine"),
+  injuries: injuryStore = null, workoutLog = null,
+}) {
   // The workout as the page shows it; sent on every change and to a page that (re)joins.
   function workoutEvent(session) {
     const { plan, runner } = session.coachState;
@@ -171,6 +187,7 @@ function createCoach({ voiceId, language = "pl", catalog = buildCatalog(), engin
     const state = session.coachState;
     const name = BODY_PART_NAMES[part];
     engine.record(session, "injury.reported", { part, severity });
+    noteChange(session, "injury.reported", { part, severity });
     if (!state.injuries.some((injury) => injury.body_part === part)) {
       state.injuries.push({ body_part: part, severity, note: note || null });
     }
@@ -218,6 +235,7 @@ function createCoach({ voiceId, language = "pl", catalog = buildCatalog(), engin
       const { changed } = replaceAhead(session, index,
         (exercise) => exercise.equipment === change.gear || exercise.needs.includes(change.gear));
       engine.record(session, "workout.no_gear", { gear: change.gear, changed });
+      noteChange(session, "workout.no_gear", { gear: change.gear });
       publish(session);
       // Before the first set nothing above was said out loud.
       if (changed && ["ready", "warmup"].includes(runner.progress.phase)) {
@@ -230,12 +248,36 @@ function createCoach({ voiceId, language = "pl", catalog = buildCatalog(), engin
     return createWorkoutRunner(plan, {
       speak: (text) => { if (!session.closed) engine.speakText(session, text); },
       publish: () => { if (!session.closed) publish(session); },
-      record: (type, payload) => engine.record(session, type, payload),
+      record: (type, payload) => {
+        engine.record(session, type, payload);
+        if (CHANGE_EVENTS.has(type)) noteChange(session, type, payload);
+      },
       canSpeakNow: () => !cueBlockedBy(session),
       setTimer: unrefTimer,
     });
   }
-  const publish = (session) => engine.emit(session, workoutEvent(session));
+  // Every change the page sees also goes to the journal (one row per session, upserted).
+  function saveLog(session) {
+    const { plan, runner, changes, startedAt } = session.coachState;
+    if (!workoutLog || !plan) return;
+    workoutLog.save({
+      sessionId: session.id,
+      startedAt,
+      finished: runner.progress.phase === "done",
+      profile: plan.profile,
+      exercises: plan.exercises,
+      sets: runner.progress.completed,
+      changes,
+    });
+  }
+
+  const publish = (session) => {
+    engine.emit(session, workoutEvent(session));
+    saveLog(session);
+  };
+  const noteChange = (session, type, payload) => {
+    session.coachState.changes.push({ type, ...payload, at: new Date().toISOString() });
+  };
 
   return {
     // setup.injuries: active ones from earlier sessions (read by server.js before the start).
@@ -244,6 +286,9 @@ function createCoach({ voiceId, language = "pl", catalog = buildCatalog(), engin
       return {
         plan: null, runner: null, planToAnnounce: false, advanceAfterTurn: false, change: null, missing: [],
         injuries,
+        lastWorkout: setup.lastWorkout || null,
+        startedAt: new Date().toISOString(),
+        changes: [],
         // "other" maps to no exercise: the model knows about it, the filter cannot use it.
         avoid: injuries.map((injury) => injury.body_part).filter((part) => part !== "other"),
       };
@@ -259,9 +304,10 @@ function createCoach({ voiceId, language = "pl", catalog = buildCatalog(), engin
     }),
 
     buildMessages(session, { userText }) {
-      const { plan, runner, injuries } = session.coachState;
+      const { plan, runner, injuries, lastWorkout } = session.coachState;
       const messages = [
         { role: "system", content: SYSTEM_PROMPT },
+        ...(lastWorkout && !plan ? [{ role: "system", content: lastWorkoutContext(lastWorkout) }] : []),
         ...(injuries.length ? [{ role: "system", content: injuryContext(injuries) }] : []),
         ...(plan ? [{ role: "system", content: planContext(plan, runner.progress) }] : []),
         ...session.history,

@@ -36,6 +36,23 @@ function advanceIntent(text) {
   return { reps: reps && reps <= 100 ? reps : null };
 }
 
+// Polish plural: 1 seria, 2–4 serie, 5+ serii (12–14 too).
+function plural(n, [one, few, many]) {
+  if (n === 1) return one;
+  const tens = n % 100;
+  return n % 10 >= 2 && n % 10 <= 4 && (tens < 12 || tens > 14) ? few : many;
+}
+
+// What was done, said at the end: exercises, sets and the reps the user counted.
+function summary(completed) {
+  if (!completed.length) return "Na dziś kończymy.";
+  const exercises = new Set(completed.map((set) => set.id)).size;
+  const reps = completed.reduce((sum, set) => sum + (set.reps || 0), 0);
+  return `Trening zrobiony: ${exercises} ${plural(exercises, ["ćwiczenie", "ćwiczenia", "ćwiczeń"])}, `
+    + `${completed.length} ${plural(completed.length, ["seria", "serie", "serii"])}`
+    + `${reps ? `, razem ${reps} ${plural(reps, ["powtórzenie", "powtórzenia", "powtórzeń"])}` : ""}. Świetna robota!`;
+}
+
 const ORDINAL = ["pierwsza", "druga", "trzecia", "czwarta", "piąta", "szósta"];
 const target = (item) => (item.reps ? `${item.reps} powtórzeń` : `${item.seconds} sekund`);
 const restText = (seconds) => (seconds >= 120 && seconds % 60 === 0 ? `${seconds / 60} minuty` : `${seconds} sekund`);
@@ -49,10 +66,10 @@ const SAY = {
     `Seria zaliczona. Przerwa ${restText(seconds)}${next ? `, potem ${next}` : ""}.`,
   nextSet: (item, setIndex) =>
     `Koniec przerwy. ${item.name}, seria ${ORDINAL[setIndex] || setIndex + 1} z ${item.sets}, ${target(item)}.`,
-  done: () => "To ostatnia seria, trening zrobiony. Świetna robota!",
+  done: (completed) => summary(completed),
   skipped: (item) => `Dobrze, pomijamy: ${item.name}.`,
   shortened: (item) => `Dobrze, kończymy: ${item.name}.`,
-  lastSkipped: (item) => `Dobrze, pomijamy: ${item.name}. To był ostatni punkt, trening zrobiony.`,
+  lastSkipped: (item, completed) => `Dobrze, pomijamy: ${item.name}. To był ostatni punkt. ${summary(completed)}`,
   fewerSets: (item, sets) => `Dobrze, ${item.name}: zostaje ${sets} ${sets === 1 ? "seria" : sets < 5 ? "serie" : "serii"}.`,
   replaced: (old, item, setText) => `Zmieniamy: zamiast ${old.name} ${setText ? "robimy" : "będzie"} ${item.name}, ${target(item)}.${setText ? ` ${setText}` : ""}`,
   setReminder: (item, setIndex) => `Seria ${ORDINAL[setIndex] || setIndex + 1} z ${item.sets}. Powiedz „gotowe” po serii.`,
@@ -124,7 +141,7 @@ function createWorkoutRunner(plan, {
     if (lastSet && progress.exerciseIndex + 1 >= plan.exercises.length) {
       progress.phase = "done";
       progress.restEndsAt = null;
-      say(SAY.done());
+      say(SAY.done(progress.completed));
       publish();
       return;
     }
@@ -147,7 +164,7 @@ function createWorkoutRunner(plan, {
     if (progress.exerciseIndex + 1 >= plan.exercises.length) {
       progress.phase = "done";
       progress.restEndsAt = null;
-      say(`${lead}${how === "skip" ? SAY.lastSkipped(item) : `${SAY.shortened(item)} ${SAY.done()}`}`);
+      say(`${lead}${how === "skip" ? SAY.lastSkipped(item, progress.completed) : `${SAY.shortened(item)} ${SAY.done(progress.completed)}`}`);
       publish();
       return;
     }
@@ -292,4 +309,4 @@ function createWorkoutRunner(plan, {
   };
 }
 
-module.exports = { createWorkoutRunner, advanceIntent, SAY };
+module.exports = { createWorkoutRunner, advanceIntent, summary, SAY };
