@@ -9,6 +9,7 @@ const { findInjuryMentions, mentionsInjury } = require("./body-mentions");
 const { recoveryFor, agoText, RECOVERY_HOURS } = require("./schedule");
 const { normalizeWords } = require("../engine/words");
 const { INTERVIEW_PROMPT, knownProfileContext, parseProfileMarker, describeInterview, weekProfile } = require("./interview");
+const { equipmentFromWords, userTexts } = require("./equipment-mentions");
 const { buildWeekPlan, describeWeek, planFromDay, dayFor, weekdayOf, describeToday, weekContext } = require("./week-plan");
 const { WEEKDAYS, WEEKDAY_NAMES } = require("./programming");
 
@@ -53,6 +54,7 @@ bez list, nagłówków, emotikonów i markdownu. Zadajesz najwyżej jedno pytani
 const QUICK_PLAN_RULES = `Na początku poznaj cel treningu, potem doświadczenie użytkownika, dostępny sprzęt
 i ile czasu ma na dzisiejszy trening.
 Wykorzystuj informacje już podane w historii, zamiast pytać ponownie.
+Sprzęt wpisuj tylko z tego, co użytkownik powiedział w tej rozmowie: „siłownia”, „siłka” to gym.
 Niczego nie zgaduj: gdy brakuje którejś odpowiedzi, zapytaj o nią. Gdy użytkownik sam podał
 wszystkie cztery, a planu jeszcze nie ma, odpowiedz jednym krótkim zdaniem i dopisz na końcu
 dokładnie jeden znacznik (aplikacja przeczyta podsumowanie i zapyta, czy układać plan; gdy
@@ -366,6 +368,16 @@ function createCoach({
     });
   }
 
+  // The model's equipment against the user's own words: one clear kind of
+  // place said ("na siłowni") wins over what the marker says.
+  function checkEquipment(session, profile) {
+    const said = equipmentFromWords(userTexts(session.history));
+    if (!said || said === profile.equipment) return profile;
+    engine.record(session, "profile.equipment_corrected", { marker: profile.equipment, said });
+    console.warn(`Sesja ${session.id}: znacznik ma sprzęt „${profile.equipment}”, a użytkownik mówił o „${said}” — biorę „${said}”.`);
+    return { ...profile, equipment: said };
+  }
+
   function queueChange(session, change) {
     if (session.coachState.runner) session.coachState.change = change;
   }
@@ -649,7 +661,8 @@ function createCoach({
         handle(session, [, fields]) {
           const state = session.coachState;
           if (state.mode !== "interview") return;
-          const profile = parseProfileMarker(fields);
+          const parsed = parseProfileMarker(fields);
+          const profile = parsed && checkEquipment(session, parsed);
           if (!profile) {
             engine.record(session, "week.profile_rejected", { marker: fields });
             console.warn(`Sesja ${session.id}: znacznik profilu bez poprawnych pól („${fields}”).`);
@@ -666,7 +679,8 @@ function createCoach({
         handle(session, [, fields]) {
           const state = session.coachState;
           if (state.plan) return;
-          const profile = parsePlanMarker(fields);
+          const parsed = parsePlanMarker(fields);
+          const profile = parsed && checkEquipment(session, parsed);
           if (!profile) {
             engine.record(session, "workout.plan_rejected", { marker: fields });
             console.warn(`Sesja ${session.id}: znacznik planu bez poprawnych pól („${fields}”).`);
