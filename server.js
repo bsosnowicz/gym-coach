@@ -52,11 +52,17 @@ if (YOLO_POSE_WS_URL) enableCamera(YOLO_POSE_WS_URL);
 // still adapts to what the user says, it is just not remembered.
 const supabaseConfig = {
   url: process.env.SUPABASE_URL,
+  // SUPABASE_SECRET_KEY is the current name (sb_secret_…), as in yoga-startup;
+  // SUPABASE_SERVICE_ROLE_KEY takes the older service_role JWT.
   serviceKey: process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY,
   userId: process.env.GYM_COACH_USER_ID || "local",
 };
 const injuries = createInjuryStore(supabaseConfig);
 const workoutLog = createWorkoutLog(supabaseConfig);
+// Said once at start: without it a missing key looked exactly like a working database.
+console.log(injuries
+  ? `Supabase: zapis włączony (${new URL(supabaseConfig.url).host}, użytkownik „${supabaseConfig.userId}”). Sprawdzenie: npm run check:supabase`
+  : `Supabase: wyłączony — brak ${supabaseConfig.url ? "SUPABASE_SECRET_KEY" : "SUPABASE_URL"} w .env; kontuzje i dziennik nie są zapisywane.`);
 
 // Break and end of the session (voice and buttons) wrap the app's coach;
 // texts can be passed here to fit the app ("trening", "lekcja").

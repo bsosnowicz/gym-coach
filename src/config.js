@@ -6,7 +6,8 @@ const path = require("path");
 function loadEnvFile(filename = process.env.ENV_FILE || path.join(__dirname, "..", ".env")) {
   if (!fs.existsSync(filename)) return;
   for (const line of fs.readFileSync(filename, "utf8").split(/\r?\n/)) {
-    const match = line.match(/^\s*([A-Z][A-Z0-9_]*)\s*=\s*(.*)\s*$/);
+    // Lazy (.*?) so trailing spaces stay out of the value: a key with a space at the end fails auth.
+    const match = line.match(/^\s*([A-Z][A-Z0-9_]*)\s*=\s*(.*?)\s*$/);
     if (!match || process.env[match[1]] !== undefined) continue;
     process.env[match[1]] = match[2].replace(/^(['"])(.*)\1$/, "$2");
   }

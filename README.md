@@ -65,10 +65,14 @@ Bez `SUPABASE_*` trening działa, tylko niczego nie pamięta między sesjami. Z 
 
 1. Załóż projekt Supabase i uruchom migracje z `supabase/migrations/` (SQL Editor albo
    `supabase db push`): `user_injuries` i `workout_sessions`.
-2. W `.env`: `SUPABASE_URL`, `SUPABASE_SECRET_KEY` (tylko serwer), `GYM_COACH_USER_ID`
-   (do czasu logowania jeden użytkownik). Starszy `SUPABASE_SERVICE_ROLE_KEY` nadal
-   działa, jeśli `SUPABASE_SECRET_KEY` jest pusty. Po zmianie `.env` zrestartuj serwer.
-3. Przy starcie sesji serwer czyta aktywne kontuzje (plan je omija, trener pyta, jak się
+2. W `.env`: `SUPABASE_URL` (sam adres projektu, `https://<ref>.supabase.co`),
+   `SUPABASE_SECRET_KEY` (Project Settings → API Keys → Secret key `sb_secret_…`, tylko serwer;
+   starszy JWT `service_role` może być pod `SUPABASE_SERVICE_ROLE_KEY`), `GYM_COACH_USER_ID`
+   (do czasu logowania jeden użytkownik). Po zmianie `.env` zrestartuj serwer.
+3. `npm run check:supabase` — sprawdza zmienne, połączenie, obie tabele i próbny zapis;
+   każdy błąd tłumaczy na przyczynę. Przy `npm start` serwer pisze, czy zapis jest włączony,
+   a każde zgłoszenie bólu i jego zapis widać w terminalu.
+4. Przy starcie sesji serwer czyta aktywne kontuzje (plan je omija, trener pyta, jak się
    czują) i ostatni trening (trener może do niego nawiązać).
 
 Klient to zwykły `fetch` do REST (`src/coach/supabase.js`), bez paczek npm. Awaria bazy
