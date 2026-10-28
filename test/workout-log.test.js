@@ -71,6 +71,7 @@ test("Rozmowa: dziennik dostaje plan, serie, zmiany i koniec; poprzedni trening 
   assert.equal(calls[0][1].content, "Poprzedni trening (2026-10-27): pompki; zrobione serie: 1 z 3, nieukończony. Możesz krótko do niego nawiązać.");
 
   await say("Dziesięć minut, bez sprzętu.");
+  await say("tak");
   const exercises = session.coachState.plan.exercises.length;
   assert.equal(exercises, 2, "10 minut to dwa ćwiczenia");
   await say("gotowe");

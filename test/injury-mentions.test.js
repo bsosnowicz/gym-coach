@@ -46,6 +46,7 @@ test("Zapas: model nie dopisał znacznika — kontuzja i tak zapisana, a plan j�
   assert.deepEqual(reports.map(({ bodyPart, severity }) => ({ bodyPart, severity })), [{ bodyPart: "knee_left", severity: "low" }]);
   assert.ok(events.some((event) => event.stage === "injury_saved" && event.part === "knee_left"));
   await say("45 minut, siłownia.");
+  await say("tak");
   const catalog = buildCatalog();
   assert.ok(live.coachState.plan.exercises.every((item) => !catalog.get(item.id).hard.includes("knee_left")));
   live.coachState.runner.stop();

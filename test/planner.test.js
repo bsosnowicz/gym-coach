@@ -74,6 +74,8 @@ test("Rozmowa: znacznik [PLAN] — plan w stanie, zdarzenie dla strony, ogłosze
 
   await runTurn(session, "Mam pół godziny na siłowni.");
   for (let i = 0; i < 10; i += 1) await tick();
+  await runTurn(session, "Tak, układaj.");
+  for (let i = 0; i < 10; i += 1) await tick();
 
   assert.ok(session.coachState.plan);
   const workout = events.find((event) => event.stage === "workout");
@@ -103,6 +105,7 @@ test("Rozmowa: „5 minut” daje najkrótszy plan; błędny znacznik — trener
   const say = async (session, text) => { await runTurn(session, text); for (let i = 0; i < 10; i += 1) await tick(); };
   const short = await liveSession({ llm: fakeLlm("Dobrze! [PLAN goal=muscle level=beginner equipment=gym minutes=5]"), coach: createCoach({ voiceId: "v", catalog, engine }) });
   await say(short.session, "5 minut.");
+  await say(short.session, "tak");
   assert.equal(short.session.coachState.plan.profile.minutes, 10);
   short.session.coachState.runner.stop();
   await endSession(short.session);
@@ -131,4 +134,32 @@ test("Partia mięśni przy kontuzji (rozmowa z 28.10): tył uda + mocno bolące 
   assert.equal(plan.focusAvailable, false);
   assert.ok(plan.exercises.every((item) => !catalog.get(item.id).loads.includes("knee_left")));
   assert.match(describePlan(plan), /Na tył uda nie mam dziś ćwiczenia bezpiecznego przy Twojej kontuzji, więc robimy trening ogólny\./);
+});
+
+test("Potwierdzenie: plan dopiero po „tak”; poprawka wraca do modelu, który pisze znacznik jeszcze raz", async () => {
+  const replies = [
+    "Dobrze. [PLAN goal=strength level=intermediate equipment=gym minutes=20 focus=hamstrings]",
+    "Jasne, 40 minut. [PLAN goal=strength level=intermediate equipment=gym minutes=40 focus=hamstrings]",
+  ];
+  const calls = [];
+  const llm = { streamChat: (args) => { calls.push(args); return fakeLlm(replies.shift() || "OK.").streamChat(args); } };
+  const { session, events } = await liveSession({ llm, coach: createCoach({ voiceId: "v", catalog, engine }) });
+  const say = async (text) => { await runTurn(session, text); for (let i = 0; i < 10; i += 1) await tick(); };
+  const spoken = () => events.filter((event) => event.stage === "avatar_transcription").map((event) => event.text);
+
+  await say("Siła, średnio zaawansowany, siłownia, 20 minut, tył uda.");
+  assert.equal(session.coachState.plan, null, "bez zgody nie ma planu");
+  assert.equal(spoken().at(-1), "Podsumuję: cel siła, poziom średniozaawansowany, siłownia, 20 minut, skupiamy się na: tył uda. Układam plan?");
+
+  await say("Nie, mam jednak 40 minut.");
+  assert.equal(calls.length, 2, "poprawka idzie do modelu");
+  assert.equal(session.coachState.plan, null);
+  assert.match(spoken().at(-1), /40 minut, skupiamy się na: tył uda\. Układam plan\?$/);
+
+  await say("Tak, dawaj.");
+  assert.equal(calls.length, 2, "„tak” nie idzie do modelu");
+  assert.equal(session.coachState.plan.profile.minutes, 40);
+  assert.match(spoken().at(-1), /^Mam plan na dziś\./);
+  session.coachState.runner.stop();
+  await endSession(session);
 });

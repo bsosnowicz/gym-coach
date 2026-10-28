@@ -32,6 +32,7 @@ test("Ból w przerwie: zapis od razu, plan bez zmian w przerwie, zmiana i zapowi
     "Dobrze! [PLAN goal=muscle level=intermediate equipment=gym minutes=60]",
   ]);
   await say("Godzina na siłowni.");
+  await say("tak");
   await say("gotowe");
   await say("gotowe");
   const first = session.coachState.plan.exercises[0];
@@ -60,6 +61,7 @@ test("Ból w przerwie bez strony: po powrocie i chwili ciszy wypowiedź idzie do
     "Które kolano? Lewe czy prawe?",
   ]);
   await say("Pół godziny, siłownia.");
+  await say("tak");
   coach.requestPause(session, { source: "button", confirmNow: true });
   for (let i = 0; i < 6; i += 1) await tick();
   await say("Boli mnie kolano.");

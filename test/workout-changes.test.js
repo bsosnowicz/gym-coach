@@ -97,6 +97,7 @@ test("Rozmowa: „za ciężko” → [SWAP] → łatwiejszy zamiennik tego sameg
     "Jasne, zmieniamy. [SWAP]",
   ]);
   await say("45 minut, siłownia, masa.");
+  await say("tak");
   await say("gotowe");
   await say("gotowe");
   const before = session.coachState.plan.exercises[0];
@@ -117,6 +118,7 @@ test("Rozmowa: „nie mam ławki” przed startem — wszystkie ćwiczenia z ła
     "Rozumiem. [NO_GEAR gear=bench]",
   ]);
   await say("Godzina na siłowni.");
+  await say("tak");
   const needsBench = (plan) => plan.exercises.filter((item) => catalog.get(item.id).needs.includes("bench"));
   assert.ok(needsBench(session.coachState.plan).length > 0, "plan z siłowni ma coś na ławce");
   await say("Nie mam tu ławki.");
@@ -133,6 +135,7 @@ test("Rozmowa: nieznany sprzęt w znaczniku niczego nie zmienia", async () => {
     "Ok. [NO_GEAR gear=sofa]",
   ]);
   await say("Pół godziny.");
+  await say("tak");
   const before = session.coachState.plan.exercises.map((item) => item.id);
   await say("Nie mam kanapy.");
   assert.deepEqual(session.coachState.plan.exercises.map((item) => item.id), before);

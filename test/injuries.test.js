@@ -81,6 +81,7 @@ test("Ból w trakcie serii: przerwanie, zamiennik bez obciążania kolana, reszt
     "Rozumiem, nie forsujemy. [PAIN part=knee_right severity=medium]",
   ]);
   await say("Godzina, siłownia.");
+  await say("tak");
   await say("gotowe");
   await say("gotowe");
   const first = session.coachState.plan.exercises[0];
@@ -104,6 +105,7 @@ test("Ostry ból: ta sama zmiana plus rada, żeby dziś skończyć", async () =>
     "Stop. [PAIN part=knee_left severity=high]",
   ]);
   await say("Godzina, siłownia.");
+  await say("tak");
   await say("gotowe");
   await say("gotowe");
   await say("Bardzo mnie zakłuło w lewym kolanie!");
@@ -119,6 +121,7 @@ test("Kontuzja z wywiadu: zapisana, a plan od razu ją omija", async () => {
   ]);
   await say("Kiedyś naderwałem lewy bark.");
   await say("45 minut na siłowni, siła.");
+  await say("tak");
   assert.equal(reports[0].bodyPart, "shoulder_left");
   // Mild pain: only exercises hard on the shoulder are out (soft ones like rows may stay).
   assert.ok(session.coachState.plan.exercises.every((item) => !catalog.get(item.id).hard.includes("shoulder_left")));
@@ -139,6 +142,7 @@ test("Kontuzje z poprzednich sesji: w prompcie i w filtrze planu; „już nie bo
   await say("Cześć.");
   assert.equal(calls[0][1].content, "Zgłoszone dolegliwości (aktywne): lewe kolano (medium): „po biegu”. Plan omija ćwiczenia obciążające te miejsca. Na początku zapytaj krótko, jak się teraz czują.");
   await say("45 minut, siłownia, masa.");
+  await say("tak");
   assert.ok(session.coachState.plan.exercises.every((item) => !catalog.get(item.id).loads.includes("knee_left")));
 
   await say("Kolano już nie boli.");
@@ -162,6 +166,7 @@ test("Ból, który nie zmienia planu: trener mówi, że zapamiętał; strona dos
     "Rozumiem. [PAIN part=neck severity=low]",
   ]);
   await say("15 minut bez sprzętu.");
+  await say("tak");
   await say("gotowe");
   await say("gotowe");
   await say("Trochę ciągnie mnie szyja.");

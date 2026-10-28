@@ -72,6 +72,7 @@ test("Plan i rozmowa: planer bierze historię, a trener mówi o progresji przy p
   live.coachState = coach.createState({ history });
   const say = async (text) => { await runTurn(live, text); for (let i = 0; i < 12; i += 1) await tick(); };
   await say("Pół godziny, siłownia.");
+  await say("tak");
   await say("gotowe");
   await say("gotowe");
   const spoken = events.filter((event) => event.stage === "avatar_transcription").map((event) => event.text);

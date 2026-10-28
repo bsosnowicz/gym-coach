@@ -156,6 +156,8 @@ test("Rozmowa: „gotowe” przesuwa trening bez modelu, a pytanie idzie do mode
 
   await runTurn(session, "Pół godziny na siłowni, masa.");
   await settle();
+  await runTurn(session, "tak");
+  await settle();
   await runTurn(session, "Gotowe");
   await settle();
   await runTurn(session, "gotowe");
@@ -195,6 +197,7 @@ test("Wynik serii: powtórzenia i ciężar z „zrobiłem 8 na 60 kilo”, takż
   const { session, events } = await liveSession({ llm, coach });
   const say = async (text) => { await runTurn(session, text); for (let i = 0; i < 12; i += 1) await tick(); };
   await say("Pół godziny, siła.");
+  await say("tak");
   await say("gotowe");
   await say("gotowe");
   await say("Zrobiłem 5 na 100 kilo");

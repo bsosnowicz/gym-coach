@@ -6,6 +6,7 @@ const { cueBlockedBy } = require("./cues");
 const { BODY_PARTS, excludedBy } = require("./exercises");
 const { SEVERITIES } = require("./injury-store");
 const { findInjuryMentions, mentionsInjury } = require("./body-mentions");
+const { normalizeWords } = require("../engine/words");
 
 const severityRank = (severity) => SEVERITIES.indexOf(severity);
 
@@ -27,8 +28,10 @@ bez list, nagłówków, emotikonów i markdownu. Zadajesz najwyżej jedno pytani
 Na początku poznaj cel treningu, potem doświadczenie użytkownika, dostępny sprzęt
 i ile czasu ma na dzisiejszy trening.
 Wykorzystuj informacje już podane w historii, zamiast pytać ponownie.
-Gdy znasz wszystkie cztery odpowiedzi, a planu jeszcze nie ma, odpowiedz jednym krótkim
-zdaniem i dopisz na końcu dokładnie jeden znacznik:
+Niczego nie zgaduj: gdy brakuje którejś odpowiedzi, zapytaj o nią. Gdy użytkownik sam podał
+wszystkie cztery, a planu jeszcze nie ma, odpowiedz jednym krótkim zdaniem i dopisz na końcu
+dokładnie jeden znacznik (aplikacja przeczyta podsumowanie i zapyta, czy układać plan; gdy
+użytkownik je poprawia, dopisz znacznik jeszcze raz z poprawionymi wartościami):
 [PLAN goal=<cel> level=<poziom> equipment=<sprzęt> minutes=<liczba minut>]
 gdzie cel to strength (siła), muscle (masa mięśniowa), endurance (kondycja, wytrzymałość)
 albo general (ogólna sprawność); poziom to beginner, intermediate albo expert;
@@ -139,6 +142,26 @@ const unrefTimer = (fn, ms) => {
 };
 
 // Phrases Whisper invents on silence; they come from subtitle credits in its training data.
+// The interview read back before the plan is built: what the model understood.
+const GOAL_NAMES = { strength: "siła", muscle: "masa mięśniowa", endurance: "kondycja", general: "ogólna sprawność" };
+const LEVEL_NAMES = { beginner: "początkujący", intermediate: "średniozaawansowany", expert: "zaawansowany" };
+const EQUIPMENT_NAMES = { gym: "siłownia", home_dumbbells: "dom z hantlami", bodyweight: "bez sprzętu" };
+
+function describeProfile(profile) {
+  const focus = profile.focus ? `, skupiamy się na: ${FOCUS_MUSCLES[profile.focus]}` : "";
+  return `Podsumuję: cel ${GOAL_NAMES[profile.goal]}, poziom ${LEVEL_NAMES[profile.level]}, `
+    + `${EQUIPMENT_NAMES[profile.equipment]}, ${profile.minutes} minut${focus}. Układam plan?`;
+}
+
+// A short yes to the summary; anything longer or with "nie"/"ale" is a correction for the model.
+const YES_WORDS = new Set(["tak", "dobrze", "ok", "okej", "okay", "jasne", "pewnie", "ukladaj", "zgadza", "pasuje",
+  "dawaj", "lecimy", "super", "swietnie", "mozemy", "prosze", "jasne"]);
+function yesIntent(text) {
+  const words = normalizeWords(text);
+  return words.length > 0 && words.length <= 5 && !words.includes("nie") && !words.includes("ale")
+    && words.some((word) => YES_WORDS.has(word));
+}
+
 const STT_HALLUCINATIONS = [
   /^dziękuj[eę]\s+(za\s+)?ogląda\w*\s*[.!…]*$/i,
   /^napisy\s.{0,40}(amara|społeczno)\S*\s*[.!…]*$/i,
@@ -329,6 +352,14 @@ function createCoach({
     }
   }
 
+  function buildPlan(session, profile) {
+    const state = session.coachState;
+    state.plan = planWorkout(catalog, profile, { avoid: state.avoid, history: state.history });
+    state.runner = startRunner(session, state.plan);
+    engine.record(session, "workout.planned", { profile, exercises: state.plan.exercises.map((item) => item.id) });
+    publish(session);
+  }
+
   function startRunner(session, plan) {
     return createWorkoutRunner(plan, {
       speak: (text) => { if (!session.closed) engine.speakText(session, text); },
@@ -369,7 +400,7 @@ function createCoach({
     createState: (setup = {}) => {
       const injuries = (setup.injuries || []).filter((injury) => BODY_PARTS.includes(injury.body_part));
       return {
-        plan: null, runner: null, planToAnnounce: false, planRejected: false, advanceAfterTurn: false, change: null, missing: [],
+        plan: null, runner: null, pendingProfile: null, profileToConfirm: false, planRejected: false, advanceAfterTurn: false, change: null, missing: [],
         injuries,
         // Newest first; the last one goes to the prompt, all of them to progression and variety.
         history: setup.history || [],
@@ -417,11 +448,10 @@ function createCoach({
             state.planRejected = true;
             return;
           }
-          state.plan = planWorkout(catalog, profile, { avoid: state.avoid, history: state.history });
-          state.runner = startRunner(session, state.plan);
-          state.planToAnnounce = true;
-          engine.record(session, "workout.planned", { profile, exercises: state.plan.exercises.map((item) => item.id) });
-          publish(session);
+          // Not built yet: the coach reads back what it understood and waits for a yes.
+          state.pendingProfile = profile;
+          state.profileToConfirm = true;
+          engine.record(session, "workout.profile", { profile });
         },
       },
       {
@@ -467,7 +497,19 @@ function createCoach({
 
     // "Gotowe", "dalej", "zrobiłem 8": the step ends in code, without the model.
     beforeTurn(session, userText) {
-      const { runner } = session.coachState;
+      const state = session.coachState;
+      if (state.pendingProfile && !state.plan) {
+        if (yesIntent(userText)) {
+          buildPlan(session, state.pendingProfile);
+          state.pendingProfile = null;
+          engine.speakText(session, describePlan(state.plan));
+          return { handled: true };
+        }
+        // A correction: the model asks or writes the marker again with the new values.
+        state.pendingProfile = null;
+        return undefined;
+      }
+      const { runner } = state;
       const intent = runner && advanceIntent(userText);
       if (!intent || !runner.advance(intent)) return undefined;
       engine.record(session, "workout.advance", { text: userText, reps: intent.reps });
@@ -537,9 +579,10 @@ function createCoach({
         state.runner.advance(result);
         return;
       }
-      if (!state.planToAnnounce) return;
-      state.planToAnnounce = false;
-      await engine.speakText(session, describePlan(state.plan));
+      if (state.profileToConfirm) {
+        state.profileToConfirm = false;
+        await engine.speakText(session, describeProfile(state.pendingProfile));
+      }
     },
 
     workoutEvent,
