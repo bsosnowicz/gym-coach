@@ -12,13 +12,15 @@ import { VoiceCheck } from "../components/VoiceCheck.jsx";
 import { useSession } from "../session/useSession.js";
 
 // texts: overrides of session/texts.js; onEvent(data): the app's own SSE stages.
-// children(session): the app's own parts below the controls (e.g. a camera panel).
+// children(session, { start }): the app's own parts below the controls (e.g. a
+// camera panel); start(setup) begins a session with that setup, after the voice check.
 // overlay: the app's own layer on the avatar video (e.g. a rest countdown).
 export function SessionScreen({ texts, onEvent, children, overlay = null }) {
   const videoRef = useRef(null);
   const session = useSession(videoRef, { texts, onEvent });
   const t = session.texts;
-  const [checking, setChecking] = useState(false);
+  // The setup the session starts with once the voice check is done; null: no check open.
+  const [checking, setChecking] = useState(null);
   return (
     <>
       <main className="app">
@@ -27,9 +29,9 @@ export function SessionScreen({ texts, onEvent, children, overlay = null }) {
           <MicBlockedOverlay reason={session.micBlocked} onResume={session.resumeMic} texts={t} />
           {overlay}
         </AvatarStage>
-        <SessionControls session={session} onStart={() => setChecking(true)} />
+        <SessionControls session={session} onStart={() => setChecking({})} />
         <p className="hint">{t.voiceHint}</p>
-        {children?.(session)}
+        {children?.(session, { start: (setup) => setChecking(setup) })}
         <Transcript items={session.transcript} />
         <DevLog title={t.devLog} />
       </main>
@@ -42,9 +44,9 @@ export function SessionScreen({ texts, onEvent, children, overlay = null }) {
         texts={t}
       />
       <VoiceCheck
-        open={checking}
-        onDone={() => { setChecking(false); session.start(); }}
-        onClose={() => setChecking(false)}
+        open={checking !== null}
+        onDone={() => { const setup = checking; setChecking(null); session.start(setup); }}
+        onClose={() => setChecking(null)}
         texts={t}
       />
     </>

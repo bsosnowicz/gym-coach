@@ -153,6 +153,12 @@ const ROUTES = {
     sendJson(res, 200, { camera: YOLO_POSE_WS_URL ? { yoloUrl: YOLO_POSE_WS_URL } : null });
   },
 
+  // The weekly plan for the calendar before any session; null without Supabase or a plan.
+  "GET /api/plan": async (_req, res) => {
+    const [week, profile] = await Promise.all([plans?.activePlan() ?? null, plans?.profile() ?? null]);
+    sendJson(res, 200, { week, profile, saving: Boolean(plans) });
+  },
+
   "POST /api/session/start": async (req, res, user) => {
     sessionStartRateLimit(user.id);
     const usageAtStart = usageSnapshot();
