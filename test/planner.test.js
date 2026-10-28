@@ -59,7 +59,7 @@ test("Plan: tekst ogłoszenia wymienia ćwiczenia i zaprasza do rozgrzewki", () 
 
 test("Znacznik planu: tylko zamknięte wartości", () => {
   assert.deepEqual(parsePlanMarker("goal=strength level=beginner equipment=home_dumbbells minutes=45"),
-    { goal: "strength", level: "beginner", equipment: "home_dumbbells", minutes: 45, focus: null });
+    { goal: "strength", level: "beginner", equipment: "home_dumbbells", minutes: 45, focus: null, fresh: false });
   assert.equal(parsePlanMarker("goal=siła level=beginner equipment=gym minutes=45"), null);
   assert.equal(parsePlanMarker("goal=strength level=beginner equipment=gym minutes=5").minutes, 10, "„5 minut” to najkrótszy plan, nie brak planu");
   assert.equal(parsePlanMarker("goal=strength level=beginner equipment=gym"), null);

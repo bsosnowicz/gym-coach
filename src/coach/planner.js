@@ -65,6 +65,7 @@ const SLOTS = [
 ];
 
 const { applyProgression } = require("./progression");
+const { findScheme } = require("./schedule");
 
 const WARMUP_S = 300;
 // Rough time per set including the change-over, for fitting the session length.
@@ -110,8 +111,10 @@ function filtersFor({ equipment, level }, { avoid = [], missing = [] } = {}) {
 
 // profile: { goal, level, equipment, minutes } from the interview; avoid: injuries,
 // body part ids or { part, severity } (src/coach/exercises.js, excludedBy).
-// history: earlier workouts from the journal, newest first (progression).
-function planWorkout(catalog, { goal, level, equipment, minutes, focus = null }, { avoid = [], history = [] } = {}) {
+// history: earlier workouts from the journal, newest first (progression, scheme).
+// fresh: a new plan even when a scheme exists; tired: the muscles have not
+// recovered, so no step up in weight.
+function planWorkout(catalog, { goal, level, equipment, minutes, focus = null }, { avoid = [], history = [], fresh = false, tired = false } = {}) {
   if (!GOALS.includes(goal)) throw new Error(`Plan: nieznany cel „${goal}”`);
   if (!EQUIPMENT_PRESETS[equipment]) throw new Error(`Plan: nieznany sprzęt „${equipment}”`);
   const prescription = prescriptionFor(goal, level);
@@ -124,13 +127,33 @@ function planWorkout(catalog, { goal, level, equipment, minutes, focus = null },
   // has a "last time" for each exercise (src/coach/progression.js).
   const lastSession = new Set((history[0]?.exercises || []).map((item) => item.id));
   const chosen = [];
+  // The same scheme as last time with this goal, gear and focus: its exercises
+  // in its order; those that no longer fit (injury, gear) get a replacement.
+  const scheme = fresh ? null : findScheme({ goal, equipment, focus }, history);
+  if (scheme) {
+    for (const item of scheme.exercises) {
+      if (chosen.length >= wanted) break;
+      const exercise = catalog.get(item.id);
+      const fits = exercise && candidates.includes(exercise);
+      // A replacement brings a movement the plan does not have yet (three kinds of
+      // calf raises are no leg day); nothing like that — the slots below fill in.
+      const pick = fits ? exercise
+        : catalog.substitutes(item.id, filters).find((candidate) => !chosen.includes(candidate)
+          && !chosen.some((other) => other.pattern === candidate.pattern));
+      if (pick && !chosen.includes(pick)) chosen.push(pick);
+    }
+  }
+  // A fresh plan stays away from the whole scheme, not only from the last session.
+  const avoidIds = fresh ? new Set((findScheme({ goal, equipment, focus }, history)?.exercises || []).map((item) => item.id)) : lastSession;
   for (const patterns of SLOTS) {
     if (chosen.length >= wanted) break;
     const pick = candidates
       .filter((exercise) => patterns.includes(exercise.pattern) && !chosen.some((item) => item.id === exercise.id))
+      // A slot the scheme already covers stays covered once.
+      .filter(() => !scheme || !chosen.some((item) => patterns.includes(item.pattern)))
       // Within a slot: the slot's first pattern, not done last time, compound before isolation.
       .sort((a, b) => patterns.indexOf(a.pattern) - patterns.indexOf(b.pattern)
-        || (lastSession.has(a.id) ? 1 : 0) - (lastSession.has(b.id) ? 1 : 0)
+        || (avoidIds.has(a.id) ? 1 : 0) - (avoidIds.has(b.id) ? 1 : 0)
         || (a.mechanic === "compound" ? 0 : 1) - (b.mechanic === "compound" ? 0 : 1))[0];
     if (pick) chosen.push(pick);
   }
@@ -141,7 +164,7 @@ function planWorkout(catalog, { goal, level, equipment, minutes, focus = null },
   let focusAvailable = true;
   let focusLimited = false;
   const target = focusOf(focus);
-  if (target) {
+  if (target && !scheme) {
     const onFocus = (exercise) => exercise.primaryMuscles.some((muscle) => target.muscles.includes(muscle));
     const want = Math.min(wanted, Math.max(FOCUS_MIN_EXERCISES, Math.ceil(wanted * FOCUS_SHARE)));
     // Only strength patterns of the slots: mountain climbers hit the quads, but are no leg day.
@@ -169,9 +192,12 @@ function planWorkout(catalog, { goal, level, equipment, minutes, focus = null },
     profile: { goal, level, equipment, minutes, focus },
     focusAvailable,
     focusLimited,
+    // The day of the scheme repeated, or null for a new plan.
+    schemeFrom: scheme?.started_at || null,
+    tired,
     avoid,
     warmup: { durationS: WARMUP_S },
-    exercises: chosen.map((exercise) => applyProgression(toPlanItem(exercise, prescription, level), exercise, history)),
+    exercises: chosen.map((exercise) => applyProgression(toPlanItem(exercise, prescription, level), exercise, history, { hold: tired })),
   };
 }
 
@@ -188,7 +214,8 @@ function describePlan(plan) {
     : !plan.focusAvailable ? `Na ${name} nie mam dziś ćwiczenia ${reason === "na Twój sprzęt" ? "na Twój sprzęt" : `bezpiecznego ${reason}`}, więc robimy trening ogólny. `
       : plan.focusLimited ? `Skupiamy się na: ${name}, ale ${reason} mniej ćwiczeń z tej partii niż zwykle. `
         : `Skupiamy się na: ${name}. `;
-  return `Mam plan na dziś. ${focusText}Najpierw pięć minut rozgrzewki, potem: ${items.join("; ")}. `
+  const schemeText = plan.schemeFrom ? "Robimy Twój stały schemat, z progresją tam, gdzie wszystko poszło. " : "";
+  return `Mam plan na dziś. ${schemeText}${focusText}Najpierw pięć minut rozgrzewki, potem: ${items.join("; ")}. `
     + "Plan widzisz na ekranie. Powiedz „gotowe”, kiedy zaczynamy rozgrzewkę.";
 }
 

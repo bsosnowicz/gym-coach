@@ -6,6 +6,7 @@ const { cueBlockedBy } = require("./cues");
 const { BODY_PARTS, excludedBy } = require("./exercises");
 const { SEVERITIES } = require("./injury-store");
 const { findInjuryMentions, mentionsInjury } = require("./body-mentions");
+const { recoveryFor, agoText, RECOVERY_HOURS } = require("./schedule");
 const { normalizeWords } = require("../engine/words");
 
 const severityRank = (severity) => SEVERITIES.indexOf(severity);
@@ -93,7 +94,7 @@ function parsePlanMarker(text) {
   if (!Number.isFinite(minutes)) return null;
   // A focus outside the list is dropped, not the whole plan.
   const focus = focusOf(fields.focus) ? fields.focus : null;
-  return { goal: fields.goal, level: fields.level, equipment: fields.equipment, minutes, focus };
+  return { goal: fields.goal, level: fields.level, equipment: fields.equipment, minutes, focus, fresh: fields.fresh === "yes" };
 }
 
 const PHASE_TEXT = {
@@ -125,12 +126,19 @@ function injuryContext(injuries) {
 }
 
 // The previous workout from the journal, so the coach can refer to it.
+// A returning user is not interviewed from scratch: goal and level are known.
 function lastWorkoutContext(last) {
   const names = (last.exercises || []).map((item) => item.name).join(", ");
   const planned = (last.exercises || []).reduce((sum, item) => sum + (item.sets || 0), 0);
   const day = String(last.started_at || "").slice(0, 10);
+  const known = last.profile
+    ? ` Znane z poprzedniego treningu: goal=${last.profile.goal} level=${last.profile.level} equipment=${last.profile.equipment}`
+      + `${last.profile.focus ? ` focus=${last.profile.focus}` : ""}.`
+    : "";
   return `Poprzedni trening (${day}): ${names || "bez planu"}; zrobione serie: ${(last.sets || []).length} z ${planned}`
-    + `${last.finished ? "" : ", nieukończony"}. Możesz krótko do niego nawiązać.`;
+    + `${last.finished ? "" : ", nieukończony"}.${known} To kolejny trening: nie pytaj o doświadczenie ani o cel, `
+    + "chyba że użytkownik sam chce coś zmienić. Zapytaj krótko, jak się dziś czuje, jaki ma dziś sprzęt i ile czasu, "
+    + "i czy robimy to samo co ostatnio. Gdy chce nowy plan („ułóż nowy plan”, „coś innego”), dopisz w znaczniku fresh=yes.";
 }
 
 // What the journal keeps besides sets: how the plan changed during the session.
@@ -149,10 +157,16 @@ const GOAL_NAMES = { strength: "siła", muscle: "masa mięśniowa", endurance: "
 const LEVEL_NAMES = { beginner: "początkujący", intermediate: "średniozaawansowany", expert: "zaawansowany" };
 const EQUIPMENT_NAMES = { gym: "siłownia", home_dumbbells: "dom z hantlami", bodyweight: "bez sprzętu" };
 
-function describeProfile(profile) {
+// recovery: { hours } when the same muscles were trained less than 48 h ago.
+function describeProfile(profile, recovery = null) {
   const focus = profile.focus ? `, skupiamy się na: ${focusOf(profile.focus).name}` : "";
+  const fresh = profile.fresh ? ", nowy plan" : "";
+  const rest = recovery
+    ? ` Uwaga: te mięśnie trenowałeś ${agoText(recovery.hours)}, a regeneracja trwa około ${RECOVERY_HOURS} godzin. `
+      + "Możemy wybrać inną partię albo trenować bez podnoszenia ciężarów."
+    : "";
   return `Podsumuję: cel ${GOAL_NAMES[profile.goal]}, poziom ${LEVEL_NAMES[profile.level]}, `
-    + `${EQUIPMENT_NAMES[profile.equipment]}, ${profile.minutes} minut${focus}. Układam plan?`;
+    + `${EQUIPMENT_NAMES[profile.equipment]}, ${profile.minutes} minut${focus}${fresh}.${rest} Układam plan?`;
 }
 
 // A short yes to the summary; anything longer or with "nie"/"ale" is a correction for the model.
@@ -357,7 +371,9 @@ function createCoach({
 
   function buildPlan(session, profile) {
     const state = session.coachState;
-    state.plan = planWorkout(catalog, profile, { avoid: state.avoid, history: state.history });
+    state.plan = planWorkout(catalog, profile, {
+      avoid: state.avoid, history: state.history, fresh: profile.fresh, tired: Boolean(state.recovery),
+    });
     state.runner = startRunner(session, state.plan);
     engine.record(session, "workout.planned", { profile, exercises: state.plan.exercises.map((item) => item.id) });
     publish(session);
@@ -453,6 +469,7 @@ function createCoach({
           }
           // Not built yet: the coach reads back what it understood and waits for a yes.
           state.pendingProfile = profile;
+          state.recovery = recoveryFor(profile, state.history, { catalog, focusOf });
           state.profileToConfirm = true;
           engine.record(session, "workout.profile", { profile });
         },
@@ -586,7 +603,7 @@ function createCoach({
       }
       if (state.profileToConfirm) {
         state.profileToConfirm = false;
-        await engine.speakText(session, describeProfile(state.pendingProfile));
+        await engine.speakText(session, describeProfile(state.pendingProfile, state.recovery));
       }
     },
 

@@ -68,7 +68,7 @@ test("Rozmowa: dziennik dostaje plan, serie, zmiany i koniec; poprzedni trening 
   const say = async (text) => { await runTurn(session, text); for (let i = 0; i < 12; i += 1) await tick(); };
 
   await say("Hej.");
-  assert.equal(calls[0][1].content, "Poprzedni trening (2026-10-27): pompki; zrobione serie: 1 z 3, nieukończony. Możesz krótko do niego nawiązać.");
+  assert.match(calls[0][1].content, /^Poprzedni trening \(2026-10-27\): pompki; zrobione serie: 1 z 3, nieukończony\. To kolejny trening: nie pytaj o doświadczenie ani o cel/);
 
   await say("Dziesięć minut, bez sprzętu.");
   await say("tak");

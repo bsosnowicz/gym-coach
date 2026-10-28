@@ -23,7 +23,8 @@ function lastTimeOf(id, history = []) {
 }
 
 // The plan entry with today's target, and `progress`: a sentence for the coach.
-function applyProgression(item, exercise, history) {
+// hold: the muscles have not recovered yet — the same as last time, no step up.
+function applyProgression(item, exercise, history, { hold = false } = {}) {
   const last = lastTimeOf(item.id, history);
   if (!last) return item;
   const { planned, sets } = last;
@@ -34,6 +35,9 @@ function applyProgression(item, exercise, history) {
   const kg = weights.length ? Math.max(...weights) : null;
   const step = WEIGHT_STEP_KG[exercise.equipment] || 0;
 
+  if (hold) {
+    return kg ? { ...item, kg, progress: `Mięśnie jeszcze się regenerują — zostajemy przy ${kgText(kg)}.` } : item;
+  }
   if (kg) {
     if (full && step) {
       const next = kg + step;
