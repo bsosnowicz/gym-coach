@@ -31,14 +31,18 @@ function Now({ plan, progress, restLeft }) {
   if (progress.phase === "warmup") return <p className="workout-now"><strong>Rozgrzewka</strong> · powiedz „gotowe”, kiedy skończysz</p>;
   if (progress.phase === "done") return <p className="workout-now"><strong>Trening zrobiony</strong> · {progress.completed} serii</p>;
   const set = `seria ${progress.setIndex + 1} z ${item.sets}`;
+  const last = progress.lastSet;
+  const lastText = last && (last.reps || last.kg)
+    ? ` · poprzednia: ${last.reps ? `${last.reps} powt.` : ""}${last.reps && last.kg ? " × " : ""}${last.kg ? `${String(last.kg).replace(".", ",")} kg` : ""}`
+    : "";
   if (progress.phase === "rest") {
     return (
       <p className="workout-now">
-        <strong>Przerwa {clock(restLeft ?? 0)}</strong>{progress.restPaused ? " (wstrzymana)" : ""} · dalej: {item.name}, {set}
+        <strong>Przerwa {clock(restLeft ?? 0)}</strong>{progress.restPaused ? " (wstrzymana)" : ""} · dalej: {item.name}, {set}{lastText}
       </p>
     );
   }
-  return <p className="workout-now"><strong>{item.name}</strong> · {set} · {TARGET(item)} · powiedz „gotowe” po serii</p>;
+  return <p className="workout-now"><strong>{item.name}</strong> · {set} · {TARGET(item)}{lastText} · powiedz „gotowe” po serii</p>;
 }
 
 export function WorkoutPanel({ workout, receivedAt }) {

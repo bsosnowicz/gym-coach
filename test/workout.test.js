@@ -51,10 +51,10 @@ function setup({ busy = () => false } = {}) {
 }
 
 test("Intencja: krótkie „gotowe”, „dalej”, „zrobiłem 8” kończą krok; pytanie i „nie” idą do modelu", () => {
-  assert.deepEqual(advanceIntent("Gotowe!"), { reps: null });
-  assert.deepEqual(advanceIntent("Dobra, zrobiłem 8."), { reps: 8 });
-  assert.deepEqual(advanceIntent("zrobiłam dziesięć"), { reps: 10 });
-  assert.deepEqual(advanceIntent("Lecimy dalej"), { reps: null });
+  assert.deepEqual(advanceIntent("Gotowe!"), { reps: null, kg: null });
+  assert.deepEqual(advanceIntent("Dobra, zrobiłem 8."), { reps: 8, kg: null });
+  assert.deepEqual(advanceIntent("zrobiłam dziesięć"), { reps: 10, kg: null });
+  assert.deepEqual(advanceIntent("Lecimy dalej"), { reps: null, kg: null });
   assert.equal(advanceIntent("Nie jestem jeszcze gotowy"), null);
   assert.equal(advanceIntent("Jak mam ustawić kolana w przysiadzie, kiedy schodzę nisko?"), null);
   assert.equal(advanceIntent("Mam pytanie"), null);
@@ -182,4 +182,27 @@ test("Koniec serii: słowa przekręcone przez Whispera też działają, pytania 
   for (const text of ["Zrobimy to razem?", "Co teraz robimy?", "Nie jestem gotowy."]) {
     assert.equal(advanceIntent(text), null, text);
   }
+});
+
+test("Wynik serii: powtórzenia i ciężar z „zrobiłem 8 na 60 kilo”, także przez [NEXT reps=… kg=…]", async () => {
+  assert.deepEqual(advanceIntent("zrobiłem 8 na 60 kilo"), { reps: 8, kg: 60 });
+  assert.deepEqual(advanceIntent("Zrobiłem osiem, 62,5 kg"), { reps: 8, kg: 62.5 });
+  assert.deepEqual(advanceIntent("gotowe"), { reps: null, kg: null });
+
+  const replies = ["Dobrze! [PLAN goal=strength level=intermediate equipment=gym minutes=30]", "Świetna seria! [NEXT reps=6 kg=80]"];
+  const llm = { streamChat: (args) => fakeLlm(replies.shift() || "OK.").streamChat(args) };
+  const coach = createCoach({ voiceId: "v", catalog: buildCatalog(), engine });
+  const { session, events } = await liveSession({ llm, coach });
+  const say = async (text) => { await runTurn(session, text); for (let i = 0; i < 12; i += 1) await tick(); };
+  await say("Pół godziny, siła.");
+  await say("gotowe");
+  await say("gotowe");
+  await say("Zrobiłem 5 na 100 kilo");
+  await say("gotowe");
+  await say("No to była ciężka, sześć razy osiemdziesiąt, ledwo co.");
+  const sets = session.coachState.runner.progress.completed;
+  assert.deepEqual(sets.map(({ reps, kg }) => ({ reps, kg })), [{ reps: 5, kg: 100 }, { reps: 6, kg: 80 }]);
+  assert.deepEqual(events.filter((event) => event.stage === "workout").at(-1).workout.progress.lastSet.kg, 80);
+  session.coachState.runner.stop();
+  await endSession(session);
 });

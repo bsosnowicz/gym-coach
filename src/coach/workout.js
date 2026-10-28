@@ -26,14 +26,29 @@ const NUMBER_WORDS = {
 
 // A short utterance that ends the step, e.g. "gotowe", "zrobiłem 8"; null when
 // it is anything else (a question, "nie jestem gotowy") — that goes to the model.
+// "na 60 kilo", "60 kg", "62,5 kilograma": the weight of the set.
+const WEIGHT = /(\d+(?:[.,]\d+)?)\s*(?:kg|kilo\w*)/i;
+// "zrobiłem 8 na 60 kilo" is longer than a bare "gotowe" but still just a result.
+const MAX_RESULT_WORDS = 9;
+
+// Reps and weight from what the user said, e.g. "zrobiłem 8 na 60 kilo".
+function parseResult(text) {
+  const raw = String(text);
+  const weight = raw.match(WEIGHT);
+  const kg = weight ? Number(weight[1].replace(",", ".")) : null;
+  const rest = weight ? raw.replace(weight[0], " ") : raw;
+  const digits = rest.match(/\b\d+\b/);
+  const spoken = normalizeWords(rest).map((word) => NUMBER_WORDS[word]).find(Boolean);
+  const reps = digits ? Number(digits[0]) : spoken || null;
+  return { reps: reps && reps <= 100 ? reps : null, kg: kg && kg > 0 && kg <= 500 ? kg : null };
+}
+
 function advanceIntent(text) {
   const words = normalizeWords(text);
-  if (!words.length || words.length > MAX_ADVANCE_WORDS || words.includes("nie") || PAIN_WORDS.test(text)) return null;
+  const limit = /\d/.test(String(text)) ? MAX_RESULT_WORDS : MAX_ADVANCE_WORDS;
+  if (!words.length || words.length > limit || words.includes("nie") || PAIN_WORDS.test(text)) return null;
   if (!words.some(isAdvanceWord)) return null;
-  const digits = String(text).match(/\d+/);
-  const spoken = words.map((word) => NUMBER_WORDS[word]).find(Boolean);
-  const reps = digits ? Number(digits[0]) : spoken || null;
-  return { reps: reps && reps <= 100 ? reps : null };
+  return parseResult(text);
 }
 
 // Polish plural: 1 seria, 2–4 serie, 5+ serii (12–14 too).
@@ -133,10 +148,10 @@ function createWorkoutRunner(plan, {
     publish();
   }
 
-  function finishSet(reps) {
+  function finishSet(reps, kg) {
     const item = current();
-    progress.completed.push({ id: item.id, set: progress.setIndex + 1, reps: reps ?? item.reps ?? null, seconds: item.seconds ?? null });
-    record("workout.set_done", { id: item.id, set: progress.setIndex + 1, reps: reps ?? null });
+    progress.completed.push({ id: item.id, set: progress.setIndex + 1, reps: reps ?? item.reps ?? null, seconds: item.seconds ?? null, kg: kg ?? null });
+    record("workout.set_done", { id: item.id, set: progress.setIndex + 1, reps: reps ?? null, kg: kg ?? null });
     const lastSet = progress.setIndex + 1 >= item.sets;
     if (lastSet && progress.exerciseIndex + 1 >= plan.exercises.length) {
       progress.phase = "done";
@@ -242,7 +257,7 @@ function createWorkoutRunner(plan, {
 
     // The user is done with the current step; reps: what they said ("zrobiłem 8").
     // Returns false when there is nothing to move on from (no plan step, done).
-    advance({ reps = null } = {}) {
+    advance({ reps = null, kg = null } = {}) {
       if (progress.phase === "ready") {
         progress.phase = "warmup";
         record("workout.warmup", {});
@@ -256,7 +271,7 @@ function createWorkoutRunner(plan, {
         return true;
       }
       if (progress.phase === "set") {
-        finishSet(reps);
+        finishSet(reps, kg);
         return true;
       }
       if (progress.phase === "rest") {
@@ -304,9 +319,10 @@ function createWorkoutRunner(plan, {
         restLeftMs: progress.restEndsAt ? Math.max(0, progress.restEndsAt - now()) : restRemainingMs,
         restPaused: progress.phase === "rest" && !progress.restEndsAt,
         completed: progress.completed.length,
+        lastSet: progress.completed.at(-1) || null,
       };
     },
   };
 }
 
-module.exports = { createWorkoutRunner, advanceIntent, summary, SAY };
+module.exports = { createWorkoutRunner, advanceIntent, parseResult, summary, SAY };

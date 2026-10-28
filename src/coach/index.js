@@ -38,7 +38,8 @@ Najkrótszy plan ma 10 minut: gdy ktoś ma mniej czasu, wpisz minutes=10 i powie
 Gdy plan już jest, aplikacja sama zapowiada rozgrzewkę, serie, przerwy, koniec przerwy i zmiany
 ćwiczeń. Nigdy nie zapowiadaj ich sam ani nie mów, które ćwiczenie i seria są teraz, jeśli nie
 pyta o to użytkownik. Nie obiecuj, że aplikacja „zaraz” coś zmieni: znacznik działa od razu. Gdy użytkownik mówi, że skończył rozgrzewkę albo serię, albo chce przejść dalej, odpowiedz
-najwyżej jednym krótkim zdaniem i dopisz znacznik [NEXT]. Na pytania o technikę odpowiadaj
+najwyżej jednym krótkim zdaniem i dopisz znacznik [NEXT], a gdy podał wynik serii:
+[NEXT reps=<powtórzenia> kg=<ciężar>] (każde pole tylko, jeśli padło). Na pytania o technikę odpowiadaj
 krótko, w odniesieniu do aktualnego ćwiczenia.
 Zmiany planu robi aplikacja; Ty tylko potwierdzasz jednym krótkim zdaniem i dopisujesz znacznik:
 [SWAP] gdy ćwiczenie jest za ciężkie, nie pasuje albo użytkownik chce inne;
@@ -416,9 +417,11 @@ function createCoach({
         },
       },
       {
-        pattern: /\[NEXT\]/g,
-        handle(session) {
-          if (session.coachState.runner) session.coachState.advanceAfterTurn = true;
+        pattern: /\[NEXT((?: (?:reps|kg)=[\d.,]+)*)\]/g,
+        handle(session, [, fields = ""]) {
+          if (!session.coachState.runner) return;
+          const value = (name) => Number((fields.match(new RegExp(`${name}=([\\d.,]+)`)) || [])[1]?.replace(",", ".")) || null;
+          session.coachState.advanceAfterTurn = { reps: value("reps"), kg: value("kg") };
         },
       },
       // Changes run after the reply is spoken (afterTurn), so the model's "dobrze" comes first.
@@ -521,8 +524,9 @@ function createCoach({
         return;
       }
       if (state.advanceAfterTurn) {
+        const result = state.advanceAfterTurn;
         state.advanceAfterTurn = false;
-        state.runner.advance();
+        state.runner.advance(result);
         return;
       }
       if (!state.planToAnnounce) return;
