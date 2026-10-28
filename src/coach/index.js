@@ -1,5 +1,7 @@
 const { buildCatalog } = require("./exercises");
 const { planWorkout, describePlan, GOALS, EQUIPMENT_PRESETS } = require("./planner");
+const { createWorkoutRunner, advanceIntent } = require("./workout");
+const { cueBlockedBy } = require("./cues");
 
 const SYSTEM_PROMPT = `Jesteś Gym Coachem, trenerem siłowym w aplikacji głosowej z awatarem.
 Rozmawiasz po polsku, naturalnie i konkretnie. Odpowiadasz krótko: jedno lub dwa zdania,
@@ -14,6 +16,10 @@ gdzie cel to strength (siła), muscle (masa mięśniowa), endurance (kondycja, w
 albo general (ogólna sprawność); poziom to beginner, intermediate albo expert;
 sprzęt to gym (siłownia), home_dumbbells (dom z hantlami lub kettlebell) albo bodyweight
 (bez sprzętu). Planu nie wymyślaj ani nie wymieniaj ćwiczeń: plan ułoży i przeczyta aplikacja.
+Gdy plan już jest, aplikacja sama zapowiada rozgrzewkę, serie i przerwy. Nie zapowiadaj ich
+sam. Gdy użytkownik mówi, że skończył rozgrzewkę albo serię, albo chce przejść dalej, odpowiedz
+najwyżej jednym krótkim zdaniem i dopisz znacznik [NEXT]. Na pytania o technikę odpowiadaj
+krótko, w odniesieniu do aktualnego ćwiczenia.
 Nie masz obrazu z kamery ani pomiaru ruchu. Nie twierdź, że widzisz technikę,
 liczysz powtórzenia lub oceniasz wykonanie ćwiczenia.
 Gdy kamera jest włączona, aplikacja sama wypowiada w Twoim imieniu krótkie uwagi
@@ -34,12 +40,31 @@ function parsePlanMarker(text) {
   return { goal: fields.goal, level: fields.level, equipment: fields.equipment, minutes };
 }
 
+const PHASE_TEXT = {
+  ready: "plan ogłoszony, czekamy na start rozgrzewki",
+  warmup: "trwa rozgrzewka",
+  set: "trwa seria",
+  rest: "przerwa między seriami",
+  done: "trening zakończony",
+};
+
 // What the model is told about the plan in every turn after it exists.
-function planContext(plan) {
+function planContext(plan, progress) {
   const items = plan.exercises.map((item, index) =>
     `${index + 1}. ${item.name}: ${item.sets} × ${item.reps ? `${item.reps} powt.` : `${item.seconds} s`}, przerwa ${item.restS} s`);
-  return `Plan dzisiejszego treningu (ułożony przez aplikację, nie zmieniaj go sam):\nRozgrzewka 5 min\n${items.join("\n")}`;
+  const item = plan.exercises[progress.exerciseIndex];
+  const now = progress.phase === "set" || progress.phase === "rest"
+    ? `Teraz: ${PHASE_TEXT[progress.phase]} — ${item.name}, seria ${progress.setIndex + 1} z ${item.sets}.`
+    : `Teraz: ${PHASE_TEXT[progress.phase]}.`;
+  return `Plan dzisiejszego treningu (ułożony przez aplikację, nie zmieniaj go sam):\nRozgrzewka 5 min\n${items.join("\n")}\n${now}`;
 }
+
+// Timers of a session that has ended must not keep the process (or a test) alive.
+const unrefTimer = (fn, ms) => {
+  const timer = setTimeout(fn, ms);
+  timer.unref?.();
+  return timer;
+};
 
 // Phrases Whisper invents on silence; they come from subtitle credits in its training data.
 const STT_HALLUCINATIONS = [
@@ -60,13 +85,23 @@ const COURTESY_WORDS = [
 function createCoach({ voiceId, language = "pl", catalog = buildCatalog(), engine = require("../engine") }) {
   // The workout as the page shows it; sent on every change and to a page that (re)joins.
   function workoutEvent(session) {
-    const { plan } = session.coachState;
-    return { stage: "workout", workout: plan ? { plan } : null };
+    const { plan, runner } = session.coachState;
+    return { stage: "workout", workout: plan ? { plan, progress: runner.snapshot() } : null };
+  }
+
+  function startRunner(session, plan) {
+    return createWorkoutRunner(plan, {
+      speak: (text) => { if (!session.closed) engine.speakText(session, text); },
+      publish: () => { if (!session.closed) publish(session); },
+      record: (type, payload) => engine.record(session, type, payload),
+      canSpeakNow: () => !cueBlockedBy(session),
+      setTimer: unrefTimer,
+    });
   }
   const publish = (session) => engine.emit(session, workoutEvent(session));
 
   return {
-    createState: () => ({ plan: null, planToAnnounce: false, avoid: [] }),
+    createState: () => ({ plan: null, runner: null, planToAnnounce: false, advanceAfterTurn: false, avoid: [] }),
 
     speech: () => ({
       voiceId,
@@ -78,10 +113,10 @@ function createCoach({ voiceId, language = "pl", catalog = buildCatalog(), engin
     }),
 
     buildMessages(session, { userText }) {
-      const { plan } = session.coachState;
+      const { plan, runner } = session.coachState;
       const messages = [
         { role: "system", content: SYSTEM_PROMPT },
-        ...(plan ? [{ role: "system", content: planContext(plan) }] : []),
+        ...(plan ? [{ role: "system", content: planContext(plan, runner.progress) }] : []),
         ...session.history,
       ];
       if (userText === null) messages.push({ role: "user", content: "[EVENT: session_start]" });
@@ -101,16 +136,40 @@ function createCoach({ voiceId, language = "pl", catalog = buildCatalog(), engin
             return;
           }
           state.plan = planWorkout(catalog, profile, { avoid: state.avoid });
+          state.runner = startRunner(session, state.plan);
           state.planToAnnounce = true;
           engine.record(session, "workout.planned", { profile, exercises: state.plan.exercises.map((item) => item.id) });
           publish(session);
         },
       },
+      {
+        pattern: /\[NEXT\]/g,
+        handle(session) {
+          if (session.coachState.runner) session.coachState.advanceAfterTurn = true;
+        },
+      },
     ],
+
+    // "Gotowe", "dalej", "zrobiłem 8": the step ends in code, without the model.
+    beforeTurn(session, userText) {
+      const { runner } = session.coachState;
+      const intent = runner && advanceIntent(userText);
+      if (!intent || !runner.advance(intent)) return undefined;
+      engine.record(session, "workout.advance", { text: userText, reps: intent.reps });
+      return { handled: true };
+    },
+
+    onPause: (session) => session.coachState.runner?.pause(),
+    onResume: (session) => session.coachState.runner?.resume(),
 
     // The plan is read out with fixed text right after the reply that carried the marker.
     async afterTurn(session) {
       const state = session.coachState;
+      if (state.advanceAfterTurn) {
+        state.advanceAfterTurn = false;
+        state.runner.advance();
+        return;
+      }
       if (!state.planToAnnounce) return;
       state.planToAnnounce = false;
       await engine.speakText(session, describePlan(state.plan));

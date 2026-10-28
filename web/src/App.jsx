@@ -26,15 +26,16 @@ function useAppConfig() {
 
 export function App() {
   const config = useAppConfig();
-  const [workout, setWorkout] = useState(null);
+  // receivedAt: the rest left is counted from the moment the state arrived.
+  const [workout, setWorkout] = useState({ workout: null, receivedAt: 0 });
   const onEvent = (data) => {
-    if (data.stage === "workout") setWorkout(data.workout);
+    if (data.stage === "workout") setWorkout({ workout: data.workout, receivedAt: Date.now() });
   };
   return (
     <SessionScreen texts={TEXTS} onEvent={onEvent}>
       {(session) => (
         <>
-          <WorkoutPanel workout={workout} />
+          <WorkoutPanel workout={workout.workout} receivedAt={workout.receivedAt} />
           {config?.camera && (
             <Suspense fallback={null}>
               <CameraPanel config={config.camera} session={session} />
