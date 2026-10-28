@@ -3,9 +3,12 @@
 // (data/exercises-pl.json: Polish name, movement pattern, extra gear).
 //
 // Injuries are stored per joint and side (as in yoga-startup), while the
-// source knows only muscles. The link is the movement pattern: one small table
-// below says which body parts a pattern loads, instead of tagging every
-// exercise by hand.
+// source knows only muscles. The link is the movement pattern, with the two
+// lists the yoga cards have (kontuzje_twarde / kontuzje_miekkie):
+//   hard — the exercise is out with any injury of that part;
+//   soft — out too, unless the pain is mild (severity "low").
+// The overlay adds parts for single exercises where the pattern is not
+// enough (a sumo deadlift is hard on the knees, a bent-over row on the low back).
 
 const fs = require("fs");
 const path = require("path");
@@ -25,29 +28,42 @@ const BODY_PARTS = [
 
 // Sided parts are named once here and expanded to both sides: a squat loads both knees.
 const PATTERN_LOADS = {
-  squat: ["knee", "hip", "ankle", "lower_back"],
-  hinge: ["lower_back", "hip", "hamstring"],
-  hip_extension: ["hip", "lower_back"],
-  lunge: ["knee", "hip", "ankle"],
-  horizontal_push: ["shoulder", "elbow", "wrist"],
-  chest_fly: ["shoulder"],
-  vertical_push: ["shoulder", "elbow", "wrist"],
-  shoulder_raise: ["shoulder"],
-  rear_delt: ["shoulder", "upper_back"],
-  horizontal_pull: ["shoulder", "elbow", "upper_back"],
-  vertical_pull: ["shoulder", "elbow"],
-  shrug: ["neck", "upper_back"],
-  elbow_flexion: ["elbow", "wrist"],
-  elbow_extension: ["elbow", "shoulder"],
-  knee_extension: ["knee"],
-  knee_flexion: ["knee", "hamstring"],
-  calf_raise: ["ankle", "calf"],
-  core_static: ["lower_back", "shoulder"],
-  core_flexion: ["lower_back", "neck"],
-  core_rotation: ["lower_back"],
-  conditioning: ["wrist", "shoulder", "hip", "knee"],
-  carry: ["wrist", "shoulder", "upper_back"],
+  squat: { hard: ["knee"], soft: ["hip", "ankle", "lower_back"] },
+  hinge: { hard: ["lower_back", "hamstring"], soft: ["knee", "hip"] },
+  hip_extension: { hard: ["hip"], soft: ["lower_back", "knee"] },
+  lunge: { hard: ["knee"], soft: ["hip", "ankle"] },
+  horizontal_push: { hard: ["shoulder"], soft: ["elbow", "wrist"] },
+  chest_fly: { hard: ["shoulder"], soft: ["elbow"] },
+  vertical_push: { hard: ["shoulder"], soft: ["elbow", "wrist", "lower_back"] },
+  shoulder_raise: { hard: ["shoulder"], soft: [] },
+  rear_delt: { hard: [], soft: ["shoulder", "upper_back"] },
+  horizontal_pull: { hard: [], soft: ["shoulder", "elbow", "upper_back"] },
+  vertical_pull: { hard: ["shoulder"], soft: ["elbow", "wrist"] },
+  shrug: { hard: ["neck"], soft: ["upper_back", "shoulder"] },
+  elbow_flexion: { hard: ["elbow"], soft: ["wrist"] },
+  elbow_extension: { hard: ["elbow"], soft: ["shoulder", "wrist"] },
+  knee_extension: { hard: ["knee"], soft: [] },
+  knee_flexion: { hard: ["knee", "hamstring"], soft: [] },
+  calf_raise: { hard: ["ankle", "calf"], soft: [] },
+  core_static: { hard: [], soft: ["lower_back", "shoulder", "wrist"] },
+  core_flexion: { hard: [], soft: ["lower_back", "neck"] },
+  core_rotation: { hard: ["lower_back"], soft: [] },
+  conditioning: { hard: [], soft: ["wrist", "shoulder", "knee", "hip"] },
+  carry: { hard: [], soft: ["wrist", "shoulder", "lower_back"] },
 };
+
+const SEVERITIES = ["low", "medium", "high"];
+
+// injuries: body part ids, or { part, severity } — a bare id counts as more than mild.
+function normalizeInjuries(injuries = []) {
+  return injuries.map((injury) => (typeof injury === "string" ? { part: injury, severity: null } : injury));
+}
+
+// Whether the injuries rule the exercise out (the hard/soft rule above).
+function excludedBy(exercise, injuries) {
+  return normalizeInjuries(injuries).some(({ part, severity }) =>
+    exercise.hard.includes(part) || (severity !== "low" && exercise.soft.includes(part)));
+}
 
 // A replacement from the same region keeps the session balanced when nothing
 // of the same pattern fits (a sore knee rules out every squat and lunge).
@@ -62,6 +78,14 @@ const PATTERN_REGION = {
 
 const SIDED = new Set(["shoulder", "elbow", "knee", "wrist", "ankle", "hip", "calf", "hamstring"]);
 const expandParts = (parts) => parts.flatMap((part) => (SIDED.has(part) ? [`${part}_left`, `${part}_right`] : [part]));
+
+// The pattern's lists plus the overlay's own; a part named hard is not soft as well.
+function partsFor(entry) {
+  const pattern = PATTERN_LOADS[entry.pattern];
+  const hard = [...new Set(expandParts([...pattern.hard, ...(entry.hard || [])]))];
+  const soft = [...new Set(expandParts([...pattern.soft, ...(entry.soft || [])]))].filter((part) => !hard.includes(part));
+  return { hard, soft, loads: [...hard, ...soft] };
+}
 
 // Main equipment, from the source's values; the overlay fills in null and "other".
 const EQUIPMENT = ["body_only", "dumbbell", "barbell", "kettlebell", "cable", "machine", "band"];
@@ -91,6 +115,9 @@ function buildCatalog({ source = readJson("exercises.json"), overlay = readJson(
     const record = records.get(entry.id);
     if (!record) throw new Error(`Katalog: brak „${entry.id}” w exercises.json`);
     if (!PATTERN_LOADS[entry.pattern] || !PATTERN_REGION[entry.pattern]) throw new Error(`Katalog: nieznany wzorzec „${entry.pattern}” (${entry.id})`);
+    for (const part of [...(entry.hard || []), ...(entry.soft || [])]) {
+      if (!BODY_PARTS.includes(part) && !SIDED.has(part)) throw new Error(`Katalog: nieznana partia ciała „${part}” (${entry.id})`);
+    }
     const equipment = entry.equipment || SOURCE_EQUIPMENT[record.equipment];
     if (!EQUIPMENT.includes(equipment)) throw new Error(`Katalog: nieznany sprzęt „${record.equipment}” (${entry.id})`);
     for (const gear of entry.needs || []) {
@@ -102,7 +129,7 @@ function buildCatalog({ source = readJson("exercises.json"), overlay = readJson(
       pattern: entry.pattern,
       equipment,
       needs: entry.needs || [],
-      loads: expandParts(PATTERN_LOADS[entry.pattern]),
+      ...partsFor(entry),
       level: LEVELS.includes(record.level) ? record.level : "intermediate",
       mechanic: record.mechanic,
       primaryMuscles: record.primaryMuscles,
@@ -112,12 +139,12 @@ function buildCatalog({ source = readJson("exercises.json"), overlay = readJson(
   const byId = new Map(exercises.map((exercise) => [exercise.id, exercise]));
   if (byId.size !== exercises.length) throw new Error("Katalog: powtórzony identyfikator w exercises-pl.json");
 
-  // equipment / gear: what the user has (undefined = no limit); avoid: injured body parts;
-  // level: the user's level — a beginner gets no expert exercises.
+  // equipment / gear: what the user has (undefined = no limit); avoid: injuries
+  // (ids or { part, severity }); level: the user's level — a beginner gets no expert exercises.
   function fits(exercise, { equipment, gear, avoid = [], level } = {}) {
     if (equipment && !equipment.includes(exercise.equipment)) return false;
     if (gear && exercise.needs.some((item) => !gear.includes(item))) return false;
-    if (avoid.length && exercise.loads.some((part) => avoid.includes(part))) return false;
+    if (avoid.length && excludedBy(exercise, avoid)) return false;
     if (level && LEVELS.indexOf(exercise.level) > LEVELS.indexOf(level) + 1) return false;
     return true;
   }
@@ -137,10 +164,12 @@ function buildCatalog({ source = readJson("exercises.json"), overlay = readJson(
         + (exercise.primaryMuscles.some((muscle) => original.primaryMuscles.includes(muscle)) ? 2 : 0)
         + (PATTERN_REGION[exercise.pattern] === PATTERN_REGION[original.pattern] ? 1 : 0);
       return exercises
-        .filter((exercise) => exercise.id !== id && score(exercise) > 0 && fits(exercise, filters))
+        // A shared muscle alone is not enough: mountain climbers are no squat.
+        .filter((exercise) => exercise.id !== id && fits(exercise, filters)
+          && (exercise.pattern === original.pattern || PATTERN_REGION[exercise.pattern] === PATTERN_REGION[original.pattern]))
         .sort((a, b) => score(b) - score(a));
     },
   };
 }
 
-module.exports = { buildCatalog, BODY_PARTS, PATTERN_LOADS, EQUIPMENT, GEAR, LEVELS };
+module.exports = { buildCatalog, excludedBy, BODY_PARTS, PATTERN_LOADS, EQUIPMENT, GEAR, LEVELS, SEVERITIES };

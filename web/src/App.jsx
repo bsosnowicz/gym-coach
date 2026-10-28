@@ -30,6 +30,11 @@ export function App() {
   const [workout, setWorkout] = useState({ workout: null, receivedAt: 0 });
   const onEvent = (data) => {
     if (data.stage === "workout") setWorkout({ workout: data.workout, receivedAt: Date.now() });
+    if (data.stage === "injury_saved") {
+      log(data.saved === true ? `Kontuzja: ${data.name} (${data.severity || "bez oceny"}) — zapisana w Supabase.`
+        : data.saved === false ? `Kontuzja: ${data.name} — NIE zapisana w Supabase, przyczyna w terminalu serwera.`
+          : `Kontuzja: ${data.name} — Supabase wyłączony na serwerze (brak SUPABASE_URL / SUPABASE_SECRET_KEY), bez zapisu.`);
+    }
   };
   return (
     <SessionScreen texts={TEXTS} onEvent={onEvent}>

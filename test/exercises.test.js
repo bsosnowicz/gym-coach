@@ -58,10 +58,35 @@ test("Katalog: zamienniki — najpierw ten sam wzorzec, z uwzględnieniem braku 
   assert.ok(noBench.every((exercise) => !exercise.needs.includes("bench")));
   assert.ok(noBench.some((exercise) => exercise.id === "Pushups"));
 
-  const soreKnee = catalog.substitutes("Barbell_Squat", { avoid: ["knee_left", "knee_right"] });
-  assert.ok(soreKnee.length > 0, "jest czym zastąpić przysiad przy bolącym kolanie");
-  assert.ok(soreKnee.every((exercise) => !exercise.loads.includes("knee_left")));
-  assert.ok(["hinge", "hip_extension"].includes(soreKnee[0].pattern), "nogi zastępują nogi, bez zginania kolan");
+  const mild = [{ part: "knee_left", severity: "low" }, { part: "knee_right", severity: "low" }];
+  const soreKnee = catalog.substitutes("Barbell_Squat", { avoid: mild });
+  assert.ok(soreKnee.every((exercise) => !exercise.hard.includes("knee_left")));
+  assert.ok(["hinge", "hip_extension"].includes(soreKnee[0].pattern), "przy lekkim bólu nogi zastępują nogi, bez zginania kolan");
+
+  const strong = catalog.substitutes("Barbell_Squat", { avoid: ["knee_left", "knee_right"] });
+  assert.ok(strong.length > 0, "jest czym zastąpić przysiad przy bolącym kolanie");
+  assert.ok(strong.every((exercise) => !exercise.loads.includes("knee_left")));
+});
+
+test("Kontuzje jak w jodze: twarde wykluczają zawsze, miękkie — chyba że ból jest lekki", () => {
+  const { excludedBy } = require("../src/coach/exercises");
+  const deadlift = catalog.get("Barbell_Deadlift");
+  assert.ok(excludedBy(deadlift, [{ part: "knee_left", severity: "high" }]), "martwy ciąg przy mocno bolącym kolanie — nie");
+  assert.ok(excludedBy(deadlift, ["knee_left"]), "bez oceny bólu traktujemy go poważnie");
+  assert.ok(!excludedBy(deadlift, [{ part: "knee_left", severity: "low" }]), "przy lekkim dyskomforcie — można");
+  assert.ok(excludedBy(deadlift, [{ part: "lower_back", severity: "low" }]), "lędźwia są dla martwego ciągu twarde");
+  assert.ok(excludedBy(catalog.get("Sumo_Deadlift"), [{ part: "knee_right", severity: "low" }]), "sumo: kolana twarde z nakładki");
+  assert.ok(excludedBy(catalog.get("Pushups"), [{ part: "wrist_right", severity: "low" }]), "pompki: nadgarstek twardy");
+  for (const exercise of catalog.all) assert.ok(!exercise.soft.some((part) => exercise.hard.includes(part)), exercise.id);
+});
+
+test("Plan: mocno bolące lewe kolano (rozmowa z testu 28.10) — żadnych przysiadów, wykroków ani martwego ciągu", () => {
+  const { planWorkout } = require("../src/coach/planner");
+  const plan = planWorkout(catalog, { goal: "muscle", level: "expert", equipment: "gym", minutes: 60 }, { avoid: [{ part: "knee_left", severity: "high" }] });
+  const patterns = plan.exercises.map((item) => item.pattern);
+  for (const pattern of ["squat", "lunge", "hinge", "hip_extension", "knee_flexion", "knee_extension"]) {
+    assert.ok(!patterns.includes(pattern), `${pattern} w planie: ${plan.exercises.map((item) => item.name).join(", ")}`);
+  }
 });
 
 test("Katalog: literówka w nakładce zatrzymuje start, nie sesję", () => {

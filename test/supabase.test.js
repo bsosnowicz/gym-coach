@@ -27,3 +27,10 @@ for (const serviceKey of ["sb_secret_test", "legacy-service-role-jwt"]) {
     assert.equal(calls[0].headers.Prefer, "return=minimal");
   });
 }
+
+test("Supabase: adres wklejony z /rest/v1 nie podwaja ścieżki", async () => {
+  const urls = [];
+  const client = createSupabase({ url: "https://a.supabase.co/rest/v1/", serviceKey: "sb_secret_x", fetchImpl: async (url) => { urls.push(url); return new Response("[]"); } });
+  await client.request("user_injuries");
+  assert.deepEqual(urls, ["https://a.supabase.co/rest/v1/user_injuries"]);
+});

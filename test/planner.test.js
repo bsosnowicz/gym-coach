@@ -98,3 +98,19 @@ test("Rozmowa: znacznik z błędnymi polami nie tworzy planu", async () => {
   assert.ok(!events.some((event) => event.stage === "workout"));
   await endSession(session);
 });
+
+test("Rozmowa: „5 minut” daje najkrótszy plan; błędny znacznik — trener prosi o powtórzenie zamiast milczeć", async () => {
+  const say = async (session, text) => { await runTurn(session, text); for (let i = 0; i < 10; i += 1) await tick(); };
+  const short = await liveSession({ llm: fakeLlm("Dobrze! [PLAN goal=muscle level=beginner equipment=gym minutes=5]"), coach: createCoach({ voiceId: "v", catalog, engine }) });
+  await say(short.session, "5 minut.");
+  assert.equal(short.session.coachState.plan.profile.minutes, 10);
+  short.session.coachState.runner.stop();
+  await endSession(short.session);
+
+  const broken = await liveSession({ llm: fakeLlm("Dobrze! [PLAN goal=muscle level=beginner equipment=gimnastic minutes=20]"), coach: createCoach({ voiceId: "v", catalog, engine }) });
+  await say(broken.session, "20 minut.");
+  assert.equal(broken.session.coachState.plan, null);
+  const spoken = broken.events.filter((event) => event.stage === "avatar_transcription").map((event) => event.text);
+  assert.match(spoken.at(-1), /^Nie udało mi się ułożyć planu\. Powiedz jeszcze raz/);
+  await endSession(broken.session);
+});

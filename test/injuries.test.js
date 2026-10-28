@@ -89,7 +89,7 @@ test("Ból w trakcie serii: przerwanie, zamiennik bez obciążania kolana, reszt
   await say("Boli mnie prawe kolano przy schodzeniu.");
   const { plan, avoid, injuries } = session.coachState;
   assert.ok(!plan.exercises.some(loadsKnee), plan.exercises.map((item) => item.id).join(", "));
-  assert.deepEqual(avoid, ["knee_right"]);
+  assert.deepEqual(avoid, [{ part: "knee_right", severity: "medium" }]);
   assert.equal(injuries[0].body_part, "knee_right");
   assert.equal(spoken().at(-2), "Rozumiem, nie forsujemy.");
   assert.match(spoken().at(-1), new RegExp(`^Przerywamy, nie obciążamy: prawe kolano\\. Zmieniamy: zamiast ${first.name} robimy`));
@@ -120,7 +120,8 @@ test("Kontuzja z wywiadu: zapisana, a plan od razu ją omija", async () => {
   await say("Kiedyś naderwałem lewy bark.");
   await say("45 minut na siłowni, siła.");
   assert.equal(reports[0].bodyPart, "shoulder_left");
-  assert.ok(session.coachState.plan.exercises.every((item) => !catalog.get(item.id).loads.includes("shoulder_left")));
+  // Mild pain: only exercises hard on the shoulder are out (soft ones like rows may stay).
+  assert.ok(session.coachState.plan.exercises.every((item) => !catalog.get(item.id).hard.includes("shoulder_left")));
   session.coachState.runner.stop();
   await endSession(session);
 });
@@ -152,5 +153,21 @@ test("Znacznik bólu z partią spoza listy jest pomijany", async () => {
   await say("Brzuch mnie boli.");
   assert.deepEqual(reports, []);
   assert.deepEqual(session.coachState.injuries, []);
+  await endSession(session);
+});
+
+test("Ból, który nie zmienia planu: trener mówi, że zapamiętał; strona dostaje wynik zapisu", async () => {
+  const { session, say, spoken, events } = await painSession([
+    "Dobrze! [PLAN goal=general level=intermediate equipment=bodyweight minutes=15]",
+    "Rozumiem. [PAIN part=neck severity=low]",
+  ]);
+  await say("15 minut bez sprzętu.");
+  await say("gotowe");
+  await say("gotowe");
+  await say("Trochę ciągnie mnie szyja.");
+  assert.equal(spoken().at(-1), "Zapamiętałem: szyja. Kolejne ćwiczenia nie obciążają tego miejsca, możemy kontynuować.");
+  await tick();
+  assert.deepEqual(events.filter((event) => event.stage === "injury_saved").map(({ part, saved }) => ({ part, saved })), [{ part: "neck", saved: true }]);
+  session.coachState.runner.stop();
   await endSession(session);
 });

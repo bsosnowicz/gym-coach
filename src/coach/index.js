@@ -3,7 +3,7 @@ const { planWorkout, describePlan, toPlanItem, filtersFor, GOALS, EQUIPMENT_PRES
 const { EQUIPMENT, GEAR, LEVELS } = require("./exercises");
 const { createWorkoutRunner, advanceIntent } = require("./workout");
 const { cueBlockedBy } = require("./cues");
-const { BODY_PARTS } = require("./exercises");
+const { BODY_PARTS, excludedBy } = require("./exercises");
 const { SEVERITIES } = require("./injury-store");
 
 // For speech and the prompt; code matches on the ids only.
@@ -48,6 +48,11 @@ Ból i kontuzje: gdy użytkownik mówi, że coś go boli albo ma uraz (teraz alb
 także w trakcie wywiadu), odpowiedz krótko i ze spokojem, nie zachęcaj do ćwiczenia przez ból
 i dopisz znacznik [PAIN part=<partia> severity=<low|medium|high>], gdzie partia to dokładnie
 jedna wartość z listy: ${BODY_PART_IDS}. Gdy nie da się jej przypisać, użyj other.
+Partia to miejsce, które BOLI, nie ćwiczenie: „boli mnie kolano przy martwym ciągu” to knee_…,
+nie lower_back. Strona: left albo right; gdy nie padła, dopytaj albo wybierz tę, o której mówił
+wcześniej. severity: low — lekki dyskomfort, medium — boli, high — mocno, ostro, „strasznie”.
+Gdy użytkownik pyta, czemu w planie jest ćwiczenie mimo bólu, a ból jest już zgłoszony,
+dopisz [PAIN …] jeszcze raz z mocniejszym severity: aplikacja wtedy wymieni ćwiczenie.
 Aplikacja sama przerwie ćwiczenie, dobierze zamiennik i zapamięta to na kolejne treningi.
 Gdy mówi, że coś już nie boli, dopisz [PAIN_RESOLVED part=<partia>].
 Przy bólu w klatce piersiowej, duszności, zawrotach głowy albo drętwieniu każ przerwać trening,
@@ -195,12 +200,19 @@ function createCoach({
     if (!state.injuries.some((injury) => injury.body_part === part)) {
       state.injuries.push({ body_part: part, severity, note: note || null });
     }
-    if (part !== "other" && !state.avoid.includes(part)) state.avoid.push(part);
-    injuryStore?.report({ bodyPart: part, severity, note, sessionId: session.id })
-      .then((saved) => {
-        engine.record(session, saved ? "injury.saved" : "injury.save_failed", { part });
-        if (saved) console.log(`Sesja ${session.id}: ból — ${name} zapisany w Supabase.`);
-      });
+    // A second report of the same part keeps the stronger pain.
+    if (part !== "other") {
+      const known = state.avoid.find((injury) => injury.part === part);
+      if (!known) state.avoid.push({ part, severity });
+      else if (SEVERITIES.indexOf(severity) > SEVERITIES.indexOf(known.severity)) known.severity = severity;
+    }
+    // The page's log shows whether it was saved: a silent failure looked like success before.
+    const saving = injuryStore ? injuryStore.report({ bodyPart: part, severity, note, sessionId: session.id }) : Promise.resolve(null);
+    saving.then((saved) => {
+      if (saved !== null) engine.record(session, saved ? "injury.saved" : "injury.save_failed", { part });
+      if (saved) console.log(`Sesja ${session.id}: ból — ${name} zapisany w Supabase.`);
+      if (!session.closed) engine.emit(session, { stage: "injury_saved", part, name, severity, saved });
+    });
 
     const caution = severity === "high"
       ? " Przy ostrym bólu lepiej dziś skończyć: powiedz „kończymy”, jeśli tak czujesz."
@@ -211,7 +223,7 @@ function createCoach({
       return;
     }
     const lead = `Przerywamy, nie obciążamy: ${name}.${caution} `;
-    const { changed, spoken } = replaceAhead(session, runner.targetIndex(), (exercise) => exercise.loads.includes(part), { lead });
+    const { changed, spoken } = replaceAhead(session, runner.targetIndex(), (exercise) => excludedBy(exercise, [{ part, severity }]), { lead });
     publish(session);
     if (spoken) return;
     if (changed) engine.speakText(session, `Zmieniłem plan tak, żeby nie obciążać: ${name}. Nowe ćwiczenia widzisz na ekranie.${caution}`);
@@ -298,7 +310,8 @@ function createCoach({
         startedAt: new Date().toISOString(),
         changes: [],
         // "other" maps to no exercise: the model knows about it, the filter cannot use it.
-        avoid: injuries.map((injury) => injury.body_part).filter((part) => part !== "other"),
+        avoid: injuries.filter((injury) => injury.body_part !== "other")
+          .map((injury) => ({ part: injury.body_part, severity: injury.severity || null })),
       };
     },
 

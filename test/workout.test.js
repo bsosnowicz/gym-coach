@@ -174,3 +174,12 @@ test("Rozmowa: „gotowe” przesuwa trening bez modelu, a pytanie idzie do mode
   session.coachState.runner.stop();
   await endSession(session);
 });
+
+test("Koniec serii: słowa przekręcone przez Whispera też działają, pytania nadal nie", () => {
+  for (const text of ["Gotowo.", "Gotowa.", "Dobra zrubiona pierwsza serja.", "Dobrze, zrobiłem.", "skończone"]) {
+    assert.ok(advanceIntent(text), text);
+  }
+  for (const text of ["Zrobimy to razem?", "Co teraz robimy?", "Nie jestem gotowy."]) {
+    assert.equal(advanceIntent(text), null, text);
+  }
+});

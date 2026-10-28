@@ -12,8 +12,7 @@
     "build:web": "vite build",
     "test": "node --test test/*.test.js",
     "smoke": "node scripts/smoke.js",
-    "check": "find . -name '*.js' -not -path './node_modules/*' -not -path './public/*' -not -path './web/*' -exec node --check {} +",
-    "check:supabase": "node scripts/check-supabase.js"
+    "check": "find . -name '*.js' -not -path './node_modules/*' -not -path './public/*' -not -path './web/*' -exec node --check {} +"
   },
   "dependencies": {
     "livekit-client": "2.22.3",

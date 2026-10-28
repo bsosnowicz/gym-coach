@@ -84,7 +84,8 @@ function filtersFor({ equipment, level }, { avoid = [], missing = [] } = {}) {
   };
 }
 
-// profile: { goal, level, equipment, minutes } from the interview; avoid: injured body parts.
+// profile: { goal, level, equipment, minutes } from the interview; avoid: injuries,
+// body part ids or { part, severity } (src/coach/exercises.js, excludedBy).
 function planWorkout(catalog, { goal, level, equipment, minutes }, { avoid = [] } = {}) {
   if (!GOALS.includes(goal)) throw new Error(`Plan: nieznany cel „${goal}”`);
   if (!EQUIPMENT_PRESETS[equipment]) throw new Error(`Plan: nieznany sprzęt „${equipment}”`);

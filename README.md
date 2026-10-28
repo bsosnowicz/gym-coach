@@ -69,9 +69,8 @@ Bez `SUPABASE_*` trening działa, tylko niczego nie pamięta między sesjami. Z 
    `SUPABASE_SECRET_KEY` (Project Settings → API Keys → Secret key `sb_secret_…`, tylko serwer;
    starszy JWT `service_role` może być pod `SUPABASE_SERVICE_ROLE_KEY`), `GYM_COACH_USER_ID`
    (do czasu logowania jeden użytkownik). Po zmianie `.env` zrestartuj serwer.
-3. `npm run check:supabase` — sprawdza zmienne, połączenie, obie tabele i próbny zapis;
-   każdy błąd tłumaczy na przyczynę. Przy `npm start` serwer pisze, czy zapis jest włączony,
-   a każde zgłoszenie bólu i jego zapis widać w terminalu.
+3. Przy `npm start` serwer pisze, czy zapis jest włączony. Wynik zapisu każdej kontuzji
+   widać w Dzienniku na stronie i w terminalu.
 4. Przy starcie sesji serwer czyta aktywne kontuzje (plan je omija, trener pyta, jak się
    czują) i ostatni trening (trener może do niego nawiązać).
 

@@ -61,7 +61,7 @@ const injuries = createInjuryStore(supabaseConfig);
 const workoutLog = createWorkoutLog(supabaseConfig);
 // Said once at start: without it a missing key looked exactly like a working database.
 console.log(injuries
-  ? `Supabase: zapis włączony (${new URL(supabaseConfig.url).host}, użytkownik „${supabaseConfig.userId}”). Sprawdzenie: npm run check:supabase`
+  ? `Supabase: zapis włączony (${new URL(supabaseConfig.url).host}, użytkownik „${supabaseConfig.userId}”).`
   : `Supabase: wyłączony — brak ${supabaseConfig.url ? "SUPABASE_SECRET_KEY" : "SUPABASE_URL"} w .env; kontuzje i dziennik nie są zapisywane.`);
 
 // Break and end of the session (voice and buttons) wrap the app's coach;
