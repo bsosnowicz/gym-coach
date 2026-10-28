@@ -2,10 +2,12 @@
 // at each step. The model never moves the workout on its own; it only reports
 // with [NEXT] that the user is done, and code decides what comes next.
 //
-//   ready → warmup → set → rest → set → … → done
+//   ready → warmup → set → rest → ready_set → set → … → done
 //
 // "Gotowe" / "dalej" (or [NEXT]) ends the warm-up or a set; the rest between
 // sets is timed here, and saying "gotowe" during a rest skips the rest of it.
+// When the rest runs out the coach asks whether the user is ready (ready_set)
+// and the set starts on a "tak" — the user may still be drinking water.
 // Without a camera this is the rep counter: the user says when the set is
 // done ("zrobiłem 8" keeps the 8). Stage 05 can drive advance() from YOLO.
 
@@ -83,6 +85,12 @@ const SAY = {
     `Seria zaliczona. Przerwa ${restText(seconds)}${next ? `, potem ${next}` : ""}.`,
   nextSet: (item, setIndex) =>
     `Koniec przerwy. ${item.name}, seria ${ORDINAL[setIndex] || setIndex + 1} z ${item.sets}, ${target(item)}.`,
+  // Rest over: what comes next, and a question; the set starts on the answer.
+  restOver: (item, setIndex, number, total) =>
+    `Koniec przerwy. ${setIndex === 0 ? `Ćwiczenie ${number} z ${total}: ${item.name}.${item.progress ? ` ${item.progress}` : ""}` : `${item.name},`} `
+    + `seria ${ORDINAL[setIndex] || setIndex + 1} z ${item.sets}, ${target(item)}. Jesteś gotowy?`,
+  readyReminder: () => "Daj znać, kiedy będziesz gotowy na kolejną serię.",
+  go: () => "Zaczynamy. Powiedz „gotowe” po serii.",
   done: (completed) => summary(completed),
   skipped: (item) => `Dobrze, pomijamy: ${item.name}.`,
   shortened: (item) => `Dobrze, kończymy: ${item.name}.`,
@@ -133,6 +141,7 @@ function createWorkoutRunner(plan, {
     publish();
   }
 
+  // The user said they are ready before the rest ran out: straight into the set.
   function endRest() {
     restTimer = null;
     restRemainingMs = null;
@@ -143,10 +152,26 @@ function createWorkoutRunner(plan, {
     startSet();
   }
 
+  // The rest ran out: ask, and remind once if no answer comes.
+  const READY_REMINDER_MS = 45000;
+  let reminderTimer = null;
+  function restRunOut() {
+    restTimer = null;
+    restRemainingMs = null;
+    progress.phase = "ready_set";
+    progress.restEndsAt = null;
+    say(SAY.restOver(current(), progress.setIndex, progress.exerciseIndex + 1, plan.exercises.length));
+    reminderTimer = setTimer(() => {
+      reminderTimer = null;
+      if (progress.phase === "ready_set") say(SAY.readyReminder());
+    }, READY_REMINDER_MS);
+    publish();
+  }
+
   function startRest(ms) {
     progress.phase = "rest";
     progress.restEndsAt = now() + ms;
-    restTimer = setTimer(endRest, ms);
+    restTimer = setTimer(restRunOut, ms);
     publish();
   }
 
@@ -176,6 +201,8 @@ function createWorkoutRunner(plan, {
   // "shorten"; lead: said before it.
   function moveToNextExercise(how, item, lead = "") {
     clearTimer(restTimer);
+    clearTimer(reminderTimer);
+    reminderTimer = null;
     restTimer = null;
     restRemainingMs = null;
     if (progress.exerciseIndex + 1 >= plan.exercises.length) {
@@ -187,7 +214,7 @@ function createWorkoutRunner(plan, {
     }
     progress.exerciseIndex += 1;
     progress.setIndex = 0;
-    const started = progress.phase === "set" || progress.phase === "rest";
+    const started = ["set", "rest", "ready_set"].includes(progress.phase);
     if (!started) {
       // Before the first set: the plan just loses the exercise, the warm-up goes on.
       say(`${lead}${SAY.skipped(item)}`);
@@ -213,7 +240,7 @@ function createWorkoutRunner(plan, {
       plan.exercises[index] = item;
       record("workout.replaced", { from: old.id, to: item.id });
       const inSet = progress.phase === "set" && index === progress.exerciseIndex;
-      const upcoming = index === progress.exerciseIndex && progress.phase === "rest";
+      const upcoming = index === progress.exerciseIndex && ["rest", "ready_set"].includes(progress.phase);
       publish();
       if (!inSet && !upcoming) return false;
       say(`${lead}${SAY.replaced(old, item, inSet ? SAY.setReminder(item, progress.setIndex) : null)}`);
@@ -230,7 +257,7 @@ function createWorkoutRunner(plan, {
 
     // Drops an entry not started yet (nothing to replace it with); nothing is said.
     remove(index) {
-      const started = ["set", "rest", "done"].includes(progress.phase);
+      const started = ["set", "rest", "ready_set", "done"].includes(progress.phase);
       if (started ? index <= progress.exerciseIndex : index < progress.exerciseIndex) return;
       record("workout.removed", { id: plan.exercises[index].id });
       plan.exercises.splice(index, 1);
@@ -242,11 +269,11 @@ function createWorkoutRunner(plan, {
       if (progress.phase === "done") return false;
       const item = current();
       // Sets already done; during a set the current one still counts as to do.
-      const done = ["set", "rest"].includes(progress.phase) ? progress.setIndex : 0;
+      const done = ["set", "rest", "ready_set"].includes(progress.phase) ? progress.setIndex : 0;
       const sets = item.sets - 1;
       if (sets < Math.max(1, done)) return false;
       record("workout.fewer_sets", { id: item.id, sets });
-      if (sets === done && progress.phase === "rest") {
+      if (sets === done && ["rest", "ready_set"].includes(progress.phase)) {
         item.sets = sets;
         moveToNextExercise("shorten", item);
         return true;
@@ -282,12 +309,21 @@ function createWorkoutRunner(plan, {
         endRest();
         return true;
       }
+      if (progress.phase === "ready_set") {
+        clearTimer(reminderTimer);
+        reminderTimer = null;
+        say(SAY.go());
+        startSet();
+        return true;
+      }
       return false;
     },
 
     // A break of the whole session stops the rest timer; resume() restarts what was left.
     pause() {
       clearTimer(pendingTimer);
+      clearTimer(reminderTimer);
+      reminderTimer = null;
       pendingTimer = null;
       pending = null;
       if (progress.phase !== "rest" || !restTimer) return;
@@ -306,6 +342,7 @@ function createWorkoutRunner(plan, {
 
     stop() {
       clearTimer(restTimer);
+      clearTimer(reminderTimer);
       clearTimer(pendingTimer);
       restTimer = null;
       pending = null;

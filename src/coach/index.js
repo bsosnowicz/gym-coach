@@ -101,6 +101,7 @@ const PHASE_TEXT = {
   warmup: "trwa rozgrzewka",
   set: "trwa seria",
   rest: "przerwa między seriami",
+  ready_set: "koniec przerwy, aplikacja zapytała, czy użytkownik jest gotowy na serię",
   done: "trening zakończony",
 };
 
@@ -109,7 +110,7 @@ function planContext(plan, progress) {
   const items = plan.exercises.map((item, index) =>
     `${index + 1}. ${item.name}: ${item.sets} × ${item.reps ? `${item.reps} powt.` : `${item.seconds} s`}, przerwa ${item.restS} s`);
   const item = plan.exercises[progress.exerciseIndex];
-  const now = progress.phase === "set" || progress.phase === "rest"
+  const now = ["set", "rest", "ready_set"].includes(progress.phase)
     ? `Teraz: ${PHASE_TEXT[progress.phase]} — ${item.name}, seria ${progress.setIndex + 1} z ${item.sets}.`
     : `Teraz: ${PHASE_TEXT[progress.phase]}.`;
   return `Plan dzisiejszego treningu (ułożony przez aplikację, nie zmieniaj go sam):\nRozgrzewka 5 min\n${items.join("\n")}\n${now}`;
@@ -157,6 +158,7 @@ function describeProfile(profile) {
 // A short yes to the summary; anything longer or with "nie"/"ale" is a correction for the model.
 const YES_WORDS = new Set(["tak", "dobrze", "ok", "okej", "okay", "jasne", "pewnie", "ukladaj", "zgadza", "pasuje",
   "dawaj", "lecimy", "super", "swietnie", "mozemy", "prosze", "jasne"]);
+const READY_WORDS = /^(jestem|gotow\w*|dawaj|start|zaczynam\w*|moge|mozemy)( gotow\w*)?$/;
 function yesIntent(text) {
   const words = normalizeWords(text);
   return words.length > 0 && words.length <= 5 && !words.includes("nie") && !words.includes("ale")
@@ -221,7 +223,7 @@ function createCoach({
       const item = replacementFor(state, at, { easier });
       const isCurrent = at === from;
       if (item) spoken = runner.replace(at, item, { lead: isCurrent ? lead : "" }) || spoken;
-      else if (isCurrent && ["set", "rest"].includes(runner.progress.phase)) spoken = runner.skip({ lead }) || spoken;
+      else if (isCurrent && ["set", "rest", "ready_set"].includes(runner.progress.phase)) spoken = runner.skip({ lead }) || spoken;
       else runner.remove(at);
     }
     return { changed, spoken };
@@ -511,7 +513,9 @@ function createCoach({
         return undefined;
       }
       const { runner } = state;
-      const intent = runner && advanceIntent(userText);
+      // After the rest: "tak", "jestem", "dawaj" start the set as well as "gotowe".
+      const ready = runner?.progress.phase === "ready_set" && (yesIntent(userText) || READY_WORDS.test(normalizeWords(userText).join(" ")));
+      const intent = runner && (advanceIntent(userText) || (ready ? { reps: null, kg: null } : null));
       if (!intent || !runner.advance(intent)) return undefined;
       engine.record(session, "workout.advance", { text: userText, reps: intent.reps });
       return { handled: true };

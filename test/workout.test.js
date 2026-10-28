@@ -82,8 +82,16 @@ test("Prowadzenie: rozgrzewka → seria → przerwa z odliczaniem → seria → 
   assert.equal(runner.snapshot().phase, "rest");
   assert.equal(runner.snapshot().restLeftMs, 1000);
   wait(1000);
+  // The rest ran out: the coach asks, and the set starts on the answer (test 29.10).
+  assert.deepEqual([runner.snapshot().phase, runner.snapshot().setIndex], ["ready_set", 1]);
+  assert.equal(said.at(-1), "Koniec przerwy. przysiad ze sztangą, seria druga z 2, 10 powtórzeń. Jesteś gotowy?");
+  wait(45000);
+  assert.equal(said.at(-1), "Daj znać, kiedy będziesz gotowy na kolejną serię.", "bez odpowiedzi — jedno przypomnienie");
+  wait(120000);
+  assert.equal(said.filter((line) => line.startsWith("Daj znać")).length, 1);
+  runner.advance();
   assert.deepEqual([runner.snapshot().phase, runner.snapshot().setIndex], ["set", 1]);
-  assert.equal(said.at(-1), "Koniec przerwy. przysiad ze sztangą, seria druga z 2, 10 powtórzeń.");
+  assert.equal(said.at(-1), "Zaczynamy. Powiedz „gotowe” po serii.");
 
   runner.advance();
   assert.equal(said.at(-1), "Seria zaliczona. Przerwa 90 sekund, potem deska.");
@@ -113,8 +121,8 @@ test("Prowadzenie: przerwa w sesji zatrzymuje odliczanie, powrót je wznawia", (
   wait(59000);
   assert.equal(runner.snapshot().phase, "rest");
   wait(1000);
-  assert.equal(runner.snapshot().phase, "set");
-  assert.match(said.at(-1), /^Koniec przerwy/);
+  assert.equal(runner.snapshot().phase, "ready_set");
+  assert.match(said.at(-1), /^Koniec przerwy.*Jesteś gotowy\?$/);
 });
 
 test("Prowadzenie: zapowiedź po przerwie czeka, aż trener skończy odpowiadać (najwyżej 8 s)", () => {
@@ -207,5 +215,29 @@ test("Wynik serii: powtórzenia i ciężar z „zrobiłem 8 na 60 kilo”, takż
   assert.deepEqual(sets.map(({ reps, kg }) => ({ reps, kg })), [{ reps: 5, kg: 100 }, { reps: 6, kg: 80 }]);
   assert.deepEqual(events.filter((event) => event.stage === "workout").at(-1).workout.progress.lastSet.kg, 80);
   session.coachState.runner.stop();
+  await endSession(session);
+});
+
+test("Koniec przerwy w rozmowie: „Tak, jestem gotowy” startuje serię bez modelu; pytanie idzie do modelu", async () => {
+  const replies = ["Dobrze! [PLAN goal=muscle level=intermediate equipment=gym minutes=30]", "Pij małymi łykami."];
+  const calls = [];
+  const llm = { streamChat: (args) => { calls.push(args); return fakeLlm(replies.shift() || "OK.").streamChat(args); } };
+  const coach = createCoach({ voiceId: "v", catalog: buildCatalog(), engine });
+  const { session } = await liveSession({ llm, coach });
+  const say = async (text) => { await runTurn(session, text); for (let i = 0; i < 12; i += 1) await tick(); };
+  await say("Pół godziny, siłownia, masa.");
+  await say("tak");
+  await say("gotowe");
+  await say("gotowe");
+  await say("zrobiłem 10");
+  const { runner } = session.coachState;
+  runner.progress.phase = "ready_set"; // as if the rest had run out
+  await say("Mogę się jeszcze napić wody?");
+  assert.equal(calls.length, 2);
+  assert.equal(runner.progress.phase, "ready_set");
+  await say("Tak, jestem gotowy.");
+  assert.equal(calls.length, 2, "gotowość bez modelu");
+  assert.equal(runner.progress.phase, "set");
+  runner.stop();
   await endSession(session);
 });

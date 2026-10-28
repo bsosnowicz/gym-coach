@@ -35,6 +35,9 @@ function Now({ plan, progress, restLeft }) {
   const lastText = last && (last.reps || last.kg)
     ? ` · poprzednia: ${last.reps ? `${last.reps} powt.` : ""}${last.reps && last.kg ? " × " : ""}${last.kg ? `${String(last.kg).replace(".", ",")} kg` : ""}`
     : "";
+  if (progress.phase === "ready_set") {
+    return <p className="workout-now"><strong>Koniec przerwy</strong> · powiedz „tak”, gdy jesteś gotowy · dalej: {item.name}, {set}{lastText}</p>;
+  }
   if (progress.phase === "rest") {
     return (
       <p className="workout-now">
