@@ -171,6 +171,9 @@ const ROUTES = {
     if (session.providerFailurePayload) res.write(`data: ${JSON.stringify(session.providerFailurePayload)}\n\n`);
     const handover = session.handover.snapshot();
     if (handover) res.write(`data: ${JSON.stringify(handover)}\n\n`);
+    // The app's own state (the workout) for a page that joins or rejoins the stream.
+    const domain = session.coach.workoutEvent?.(session);
+    if (domain) res.write(`data: ${JSON.stringify(domain)}\n\n`);
     const heartbeat = setInterval(() => {
       if (res.writableEnded || res.destroyed) return clearInterval(heartbeat);
       res.write(": ping\n\n");

@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { log } from "../../public/ui/log.js";
 import { SessionScreen } from "./screens/SessionScreen.jsx";
+import { WorkoutPanel } from "./workout/WorkoutPanel.jsx";
 
 // Loaded only when the server has a YOLO address: without it the camera code is never fetched.
 const CameraPanel = lazy(() => import("./camera/CameraPanel.jsx"));
@@ -25,12 +26,21 @@ function useAppConfig() {
 
 export function App() {
   const config = useAppConfig();
+  const [workout, setWorkout] = useState(null);
+  const onEvent = (data) => {
+    if (data.stage === "workout") setWorkout(data.workout);
+  };
   return (
-    <SessionScreen texts={TEXTS}>
-      {(session) => config?.camera && (
-        <Suspense fallback={null}>
-          <CameraPanel config={config.camera} session={session} />
-        </Suspense>
+    <SessionScreen texts={TEXTS} onEvent={onEvent}>
+      {(session) => (
+        <>
+          <WorkoutPanel workout={workout} />
+          {config?.camera && (
+            <Suspense fallback={null}>
+              <CameraPanel config={config.camera} session={session} />
+            </Suspense>
+          )}
+        </>
       )}
     </SessionScreen>
   );
