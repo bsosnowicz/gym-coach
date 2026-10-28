@@ -58,7 +58,11 @@ test("Progresja: liczy się ostatnia sesja z tym ćwiczeniem, nie po prostu osta
 });
 
 test("Plan i rozmowa: planer bierze historię, a trener mówi o progresji przy pierwszej serii", async () => {
-  const history = session(sets([10, 60], [10, 60], [10, 60]));
+  // Session B (the newest) had the full squat; session A, before it, the back squat at 60 kg.
+  const history = [
+    { exercises: [{ id: "Barbell_Full_Squat", sets: 3, reps: 10 }], sets: [{ id: "Barbell_Full_Squat", reps: 10 }] },
+    ...session(sets([10, 60], [10, 60], [10, 60])),
+  ];
   const plan = planWorkout(catalog, { goal: "muscle", level: "intermediate", equipment: "gym", minutes: 30 }, { history });
   assert.equal(plan.exercises[0].id, "Barbell_Squat");
   assert.equal(plan.exercises[0].kg, 62.5);
