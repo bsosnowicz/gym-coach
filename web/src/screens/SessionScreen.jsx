@@ -13,7 +13,8 @@ import { useSession } from "../session/useSession.js";
 
 // texts: overrides of session/texts.js; onEvent(data): the app's own SSE stages.
 // children(session): the app's own parts below the controls (e.g. a camera panel).
-export function SessionScreen({ texts, onEvent, children }) {
+// overlay: the app's own layer on the avatar video (e.g. a rest countdown).
+export function SessionScreen({ texts, onEvent, children, overlay = null }) {
   const videoRef = useRef(null);
   const session = useSession(videoRef, { texts, onEvent });
   const t = session.texts;
@@ -24,6 +25,7 @@ export function SessionScreen({ texts, onEvent, children }) {
         <AvatarStage videoRef={videoRef} status={session.status} audioUnlockText={t.audioUnlock}>
           <BreakOverlay open={session.hold === "pause"} onContinue={session.continueSession} texts={t} reconnecting={session.reconnecting} />
           <MicBlockedOverlay reason={session.micBlocked} onResume={session.resumeMic} texts={t} />
+          {overlay}
         </AvatarStage>
         <SessionControls session={session} onStart={() => setChecking(true)} />
         <p className="hint">{t.voiceHint}</p>

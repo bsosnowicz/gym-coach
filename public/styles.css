@@ -202,3 +202,23 @@ body {
 .workout-now { margin: 0 0 10px; padding: 8px 12px; border-radius: 8px; background: var(--bg); }
 .workout-item[data-state="done"] { color: var(--muted); text-decoration: line-through; }
 .workout-item[data-state="current"] { font-weight: 600; color: var(--primary); }
+
+/* The rest countdown on the avatar video (web/src/workout/RestOverlay.jsx). */
+.rest-timer {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  padding: 10px 16px;
+  border-radius: 12px;
+  background: rgb(0 0 0 / 0.6);
+  color: #fff;
+  text-align: right;
+  pointer-events: none;
+}
+.rest-timer-label { font-size: 14px; color: #e6e6e0; }
+.rest-timer-clock { font-size: clamp(36px, 9vw, 64px); font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+.rest-timer-ready { font-size: clamp(28px, 6vw, 44px); }
+.rest-timer-next { font-size: 13px; color: #e6e6e0; max-width: 260px; }

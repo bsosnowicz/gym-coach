@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { log } from "../../public/ui/log.js";
 import { SessionScreen } from "./screens/SessionScreen.jsx";
+import { RestOverlay } from "./workout/RestOverlay.jsx";
 import { WorkoutPanel } from "./workout/WorkoutPanel.jsx";
 
 // Loaded only when the server has a YOLO address: without it the camera code is never fetched.
@@ -38,7 +39,7 @@ export function App() {
     }
   };
   return (
-    <SessionScreen texts={TEXTS} onEvent={onEvent}>
+    <SessionScreen texts={TEXTS} onEvent={onEvent} overlay={<RestOverlay workout={workout.workout} receivedAt={workout.receivedAt} />}>
       {(session) => (
         <>
           <WorkoutPanel workout={workout.workout} receivedAt={workout.receivedAt} />

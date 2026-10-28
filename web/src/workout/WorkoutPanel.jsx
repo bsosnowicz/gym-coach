@@ -6,7 +6,7 @@ const TARGET = (item) => (item.reps ? `${item.reps} powtórzeń` : `${item.secon
 const SETS = (item) => `${item.sets} × ${item.reps ? `${item.reps} powt.` : `${item.seconds} s`}${item.kg ? ` · ${String(item.kg).replace(".", ",")} kg` : ""}`;
 
 // Ticks while a rest counts down; the server sends the time left, not a clock reading.
-function useRestLeft(progress, receivedAt) {
+export function useRestLeft(progress, receivedAt) {
   const [now, setNow] = useState(() => Date.now());
   const counting = progress?.phase === "rest" && !progress.restPaused && progress.restLeftMs !== null;
   useEffect(() => {
@@ -20,7 +20,7 @@ function useRestLeft(progress, receivedAt) {
   return Math.max(0, Math.min(progress.restLeftMs, progress.restLeftMs - (now - receivedAt)));
 }
 
-function clock(ms) {
+export function clock(ms) {
   const seconds = Math.ceil(ms / 1000);
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }

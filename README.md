@@ -51,12 +51,25 @@ Bez kamery liczbę powtórzeń podaje użytkownik („zrobiłem 8”); na etapie
 
 ### Plany między sesjami (etap 10)
 
+- **Potwierdzenie:** po wywiadzie trener czyta, co zrozumiał („Podsumuję: cel …, siłownia,
+  20 minut, skupiamy się na: nogi. Układam plan?”), plan powstaje po „tak”; poprawka wraca
+  do rozmowy.
+- **Stały schemat:** ten sam cel, sprzęt i partia co w zapisanym treningu — te same ćwiczenia
+  z progresją; kontuzja albo brak sprzętu wymienia tylko to, czego dotyczy. „Ułóż nowy plan”
+  daje inne ćwiczenia. Kolejny trening zaczyna się krótko: samopoczucie, sprzęt, czas,
+  to samo co ostatnio? — bez pytania o poziom.
+- **Regeneracja:** te same mięśnie trenowane mniej niż 48 h temu — ostrzeżenie w podsumowaniu,
+  a jeśli mimo to trening, ciężary się nie podnoszą.
+- **Partie:** grupy nogi, plecy, ramiona, core albo pojedynczy mięsień; ok. 2/3 planu.
+- **Koniec przerwy:** licznik na obrazie awatara; po czasie „Koniec przerwy … Jesteś
+  gotowy?”, seria rusza po „tak” (jedno przypomnienie po 45 s).
+
 - **Ciężar.** „Zrobiłem 8 na 60 kilo” zapisuje powtórzenia i ciężar serii w dzienniku.
 - **Progresja** (`src/coach/progression.js`): dla każdego ćwiczenia decyduje ostatnia sesja,
   w której było. Komplet serii i powtórzeń → dziś więcej (sztanga +2,5 kg, hantle +2, kettlebell
   +4, maszyna +5; bez ciężaru +2 powtórzenia, deska +10 s); coś nie wyszło → tyle samo.
   Trener mówi to przy pierwszej serii.
-- **Różnorodność A/B:** w każdym slocie wygrywa ćwiczenie, którego nie było w ostatniej sesji.
+- **Różnorodność A/B** (gdy nie ma schematu): w slocie wygrywa ćwiczenie spoza ostatniej sesji.
 - **Partia mięśni:** „chcę popracować nad tyłem uda” → `focus=hamstrings`; do dwóch ćwiczeń
   na tę partię na początku planu, tylko bezpieczne przy kontuzjach.
 - **Kontuzje:** zapisuje się każda wzmianka o urazie, także bez słowa „boli” i podana jako cel
