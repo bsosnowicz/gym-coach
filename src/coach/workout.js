@@ -12,10 +12,10 @@
 const { normalizeWords } = require("../engine/words");
 
 // Said briefly, these end the current step. Diacritics are stripped (normalizeWords).
-const ADVANCE_WORDS = new Set([
-  "gotowe", "gotowy", "gotowa", "dalej", "zrobione", "zrobilem", "zrobilam", "skonczylem", "skonczylam",
-  "skonczone", "nastepne", "nastepna", "nastepny", "lecimy", "jedziemy", "zaczynamy",
-]);
+// Prefixes catch what Whisper makes of tired speech: "gotowo", "zrubiona", "skończone".
+const ADVANCE_WORDS = new Set(["dalej", "lecimy", "jedziemy", "zaczynamy"]);
+const ADVANCE_PREFIXES = ["gotow", "zrobil", "zrobion", "zrubil", "zrubion", "skonczyl", "skonczon", "nastepn"];
+const isAdvanceWord = (word) => ADVANCE_WORDS.has(word) || ADVANCE_PREFIXES.some((prefix) => word.startsWith(prefix));
 const MAX_ADVANCE_WORDS = 5;
 // "Boli mnie kolano, gotowe" is a pain report for the model, not the end of a set.
 const PAIN_WORDS = /\b(?:bol[iąaeęoy]\w*|ból\w*|bolesn\w*|uraz\w*|kontuzj\w*|naderw\w*|skręcon\w*|skręcił\w*|zwichn\w*|kłuj\w*|strzyk\w*|ciągnie)/iu;
@@ -29,7 +29,7 @@ const NUMBER_WORDS = {
 function advanceIntent(text) {
   const words = normalizeWords(text);
   if (!words.length || words.length > MAX_ADVANCE_WORDS || words.includes("nie") || PAIN_WORDS.test(text)) return null;
-  if (!words.some((word) => ADVANCE_WORDS.has(word))) return null;
+  if (!words.some(isAdvanceWord)) return null;
   const digits = String(text).match(/\d+/);
   const spoken = words.map((word) => NUMBER_WORDS[word]).find(Boolean);
   const reps = digits ? Number(digits[0]) : spoken || null;

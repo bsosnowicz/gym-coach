@@ -31,8 +31,10 @@ gdzie cel to strength (siła), muscle (masa mięśniowa), endurance (kondycja, w
 albo general (ogólna sprawność); poziom to beginner, intermediate albo expert;
 sprzęt to gym (siłownia), home_dumbbells (dom z hantlami lub kettlebell) albo bodyweight
 (bez sprzętu). Planu nie wymyślaj ani nie wymieniaj ćwiczeń: plan ułoży i przeczyta aplikacja.
-Gdy plan już jest, aplikacja sama zapowiada rozgrzewkę, serie i przerwy. Nie zapowiadaj ich
-sam. Gdy użytkownik mówi, że skończył rozgrzewkę albo serię, albo chce przejść dalej, odpowiedz
+Najkrótszy plan ma 10 minut: gdy ktoś ma mniej czasu, wpisz minutes=10 i powiedz, że zrobicie krótki trening.
+Gdy plan już jest, aplikacja sama zapowiada rozgrzewkę, serie, przerwy, koniec przerwy i zmiany
+ćwiczeń. Nigdy nie zapowiadaj ich sam ani nie mów, które ćwiczenie i seria są teraz, jeśli nie
+pyta o to użytkownik. Nie obiecuj, że aplikacja „zaraz” coś zmieni: znacznik działa od razu. Gdy użytkownik mówi, że skończył rozgrzewkę albo serię, albo chce przejść dalej, odpowiedz
 najwyżej jednym krótkim zdaniem i dopisz znacznik [NEXT]. Na pytania o technikę odpowiadaj
 krótko, w odniesieniu do aktualnego ćwiczenia.
 Zmiany planu robi aplikacja; Ty tylko potwierdzasz jednym krótkim zdaniem i dopisujesz znacznik:
@@ -64,9 +66,10 @@ const PLAN_LEVELS = ["beginner", "intermediate", "expert"];
 
 function parsePlanMarker(text) {
   const fields = Object.fromEntries([...text.matchAll(/(\w+)=([\w-]+)/g)].map(([, key, value]) => [key, value]));
-  const minutes = Math.round(Number(fields.minutes));
+  // "5 minut" gets the shortest plan instead of none: a rejected marker left the session stuck.
+  const minutes = Math.min(180, Math.max(10, Math.round(Number(fields.minutes))));
   if (!GOALS.includes(fields.goal) || !PLAN_LEVELS.includes(fields.level) || !EQUIPMENT_PRESETS[fields.equipment]) return null;
-  if (!Number.isFinite(minutes) || minutes < 10 || minutes > 180) return null;
+  if (!Number.isFinite(minutes)) return null;
   return { goal: fields.goal, level: fields.level, equipment: fields.equipment, minutes };
 }
 
@@ -188,12 +191,16 @@ function createCoach({
     const name = BODY_PART_NAMES[part];
     engine.record(session, "injury.reported", { part, severity });
     noteChange(session, "injury.reported", { part, severity });
+    console.log(`Sesja ${session.id}: ból — ${name} (${severity || "bez oceny"})${injuryStore ? ", zapisuję w Supabase" : ", Supabase wyłączony — bez zapisu"}.`);
     if (!state.injuries.some((injury) => injury.body_part === part)) {
       state.injuries.push({ body_part: part, severity, note: note || null });
     }
     if (part !== "other" && !state.avoid.includes(part)) state.avoid.push(part);
     injuryStore?.report({ bodyPart: part, severity, note, sessionId: session.id })
-      .then((saved) => engine.record(session, saved ? "injury.saved" : "injury.save_failed", { part }));
+      .then((saved) => {
+        engine.record(session, saved ? "injury.saved" : "injury.save_failed", { part });
+        if (saved) console.log(`Sesja ${session.id}: ból — ${name} zapisany w Supabase.`);
+      });
 
     const caution = severity === "high"
       ? " Przy ostrym bólu lepiej dziś skończyć: powiedz „kończymy”, jeśli tak czujesz."
@@ -208,7 +215,8 @@ function createCoach({
     publish(session);
     if (spoken) return;
     if (changed) engine.speakText(session, `Zmieniłem plan tak, żeby nie obciążać: ${name}. Nowe ćwiczenia widzisz na ekranie.${caution}`);
-    else if (caution) engine.speakText(session, caution.trim());
+    // Nothing to change still needs saying, or the user waits for a change that never comes.
+    else engine.speakText(session, `Zapamiętałem: ${name}. Kolejne ćwiczenia nie obciążają tego miejsca, możemy kontynuować.${caution}`);
   }
 
   function resolvePain(session, part) {
@@ -284,7 +292,7 @@ function createCoach({
     createState: (setup = {}) => {
       const injuries = (setup.injuries || []).filter((injury) => BODY_PARTS.includes(injury.body_part));
       return {
-        plan: null, runner: null, planToAnnounce: false, advanceAfterTurn: false, change: null, missing: [],
+        plan: null, runner: null, planToAnnounce: false, planRejected: false, advanceAfterTurn: false, change: null, missing: [],
         injuries,
         lastWorkout: setup.lastWorkout || null,
         startedAt: new Date().toISOString(),
@@ -326,6 +334,7 @@ function createCoach({
           if (!profile) {
             engine.record(session, "workout.plan_rejected", { marker: fields });
             console.warn(`Sesja ${session.id}: znacznik planu bez poprawnych pól („${fields}”).`);
+            state.planRejected = true;
             return;
           }
           state.plan = planWorkout(catalog, profile, { avoid: state.avoid });
@@ -350,6 +359,7 @@ function createCoach({
         handle(session, [, part, severity]) {
           if (!BODY_PARTS.includes(part)) {
             engine.record(session, "injury.rejected", { part });
+            console.warn(`Sesja ${session.id}: znacznik bólu z partią spoza listy („${part}”) — pomijam.`);
             return;
           }
           session.coachState.pain = { part, severity: SEVERITIES.includes(severity) ? severity : null };
@@ -397,6 +407,12 @@ function createCoach({
         const pain = state.pain;
         state.pain = null;
         handlePain(session, { ...pain, note: userText });
+        return;
+      }
+      // Without a plan the user would wait for one forever: ask again instead.
+      if (state.planRejected) {
+        state.planRejected = false;
+        await engine.speakText(session, "Nie udało mi się ułożyć planu. Powiedz jeszcze raz: cel, doświadczenie, sprzęt i ile masz czasu.");
         return;
       }
       if (state.change) {
