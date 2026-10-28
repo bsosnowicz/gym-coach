@@ -58,12 +58,38 @@ function prescriptionFor(goal, level) {
   return { ...base, sets: Math.min(base.sets, BEGINNER.maxSets), reps: Math.max(base.reps, BEGINNER.minReps) };
 }
 
+// One plan entry: the exercise with the prescription (a hold in seconds for static core work).
+function toPlanItem(exercise, { sets, reps, restS }, level) {
+  return {
+    id: exercise.id,
+    name: exercise.name,
+    pattern: exercise.pattern,
+    sets,
+    ...(STATIC_PATTERNS.has(exercise.pattern)
+      ? { seconds: HOLD_SECONDS[level] || HOLD_SECONDS.intermediate }
+      : { reps: reps || PRESCRIPTIONS.general.reps }),
+    restS,
+  };
+}
+
+// What the catalogue may offer this user: the equipment preset minus what turned
+// out to be missing, the injured body parts, the level.
+function filtersFor({ equipment, level }, { avoid = [], missing = [] } = {}) {
+  const preset = EQUIPMENT_PRESETS[equipment];
+  return {
+    equipment: preset.equipment.filter((item) => !missing.includes(item)),
+    gear: preset.gear.filter((item) => !missing.includes(item)),
+    avoid,
+    level,
+  };
+}
+
 // profile: { goal, level, equipment, minutes } from the interview; avoid: injured body parts.
 function planWorkout(catalog, { goal, level, equipment, minutes }, { avoid = [] } = {}) {
   if (!GOALS.includes(goal)) throw new Error(`Plan: nieznany cel „${goal}”`);
   if (!EQUIPMENT_PRESETS[equipment]) throw new Error(`Plan: nieznany sprzęt „${equipment}”`);
   const prescription = prescriptionFor(goal, level);
-  const filters = { ...EQUIPMENT_PRESETS[equipment], avoid, level };
+  const filters = filtersFor({ equipment, level }, { avoid });
   const candidates = catalog.available(filters);
   const wanted = exercisesFor(minutes, prescription);
 
@@ -82,16 +108,7 @@ function planWorkout(catalog, { goal, level, equipment, minutes }, { avoid = [] 
     profile: { goal, level, equipment, minutes },
     avoid,
     warmup: { durationS: WARMUP_S },
-    exercises: chosen.map((exercise) => ({
-      id: exercise.id,
-      name: exercise.name,
-      pattern: exercise.pattern,
-      sets: prescription.sets,
-      ...(STATIC_PATTERNS.has(exercise.pattern)
-        ? { seconds: HOLD_SECONDS[level] || HOLD_SECONDS.intermediate }
-        : { reps: prescription.reps }),
-      restS: prescription.restS,
-    })),
+    exercises: chosen.map((exercise) => toPlanItem(exercise, prescription, level)),
   };
 }
 
@@ -105,4 +122,4 @@ function describePlan(plan) {
     + "Plan widzisz na ekranie. Powiedz „gotowe”, kiedy zaczynamy rozgrzewkę.";
 }
 
-module.exports = { planWorkout, describePlan, GOALS, EQUIPMENT_PRESETS, PRESCRIPTIONS };
+module.exports = { planWorkout, describePlan, toPlanItem, filtersFor, GOALS, EQUIPMENT_PRESETS, PRESCRIPTIONS };

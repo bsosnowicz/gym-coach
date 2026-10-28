@@ -1,5 +1,6 @@
 const { buildCatalog } = require("./exercises");
-const { planWorkout, describePlan, GOALS, EQUIPMENT_PRESETS } = require("./planner");
+const { planWorkout, describePlan, toPlanItem, filtersFor, GOALS, EQUIPMENT_PRESETS } = require("./planner");
+const { EQUIPMENT, GEAR, LEVELS } = require("./exercises");
 const { createWorkoutRunner, advanceIntent } = require("./workout");
 const { cueBlockedBy } = require("./cues");
 
@@ -20,6 +21,13 @@ Gdy plan już jest, aplikacja sama zapowiada rozgrzewkę, serie i przerwy. Nie z
 sam. Gdy użytkownik mówi, że skończył rozgrzewkę albo serię, albo chce przejść dalej, odpowiedz
 najwyżej jednym krótkim zdaniem i dopisz znacznik [NEXT]. Na pytania o technikę odpowiadaj
 krótko, w odniesieniu do aktualnego ćwiczenia.
+Zmiany planu robi aplikacja; Ty tylko potwierdzasz jednym krótkim zdaniem i dopisujesz znacznik:
+[SWAP] gdy ćwiczenie jest za ciężkie, nie pasuje albo użytkownik chce inne;
+[SKIP] gdy chce pominąć ćwiczenie; [FEWER_SETS] gdy chce zrobić mniej serii;
+[NO_GEAR gear=<sprzęt>] gdy brakuje sprzętu, gdzie sprzęt to bench (ławka), rack (stojak),
+pullup_bar (drążek), dip_bars (poręcze), box (podest), ab_wheel (kółko), barbell (sztanga),
+dumbbell (hantle), kettlebell, cable (wyciąg) albo machine (maszyny).
+Nie wymieniaj sam nowego ćwiczenia: poda je aplikacja.
 Nie masz obrazu z kamery ani pomiaru ruchu. Nie twierdź, że widzisz technikę,
 liczysz powtórzenia lub oceniasz wykonanie ćwiczenia.
 Gdy kamera jest włączona, aplikacja sama wypowiada w Twoim imieniu krótkie uwagi
@@ -89,6 +97,56 @@ function createCoach({ voiceId, language = "pl", catalog = buildCatalog(), engin
     return { stage: "workout", workout: plan ? { plan, progress: runner.snapshot() } : null };
   }
 
+  function queueChange(session, change) {
+    if (session.coachState.runner) session.coachState.change = change;
+  }
+
+  // The best replacement for plan entry `index` that is not in the plan already.
+  // easier: "za ciężko" — no harder than the original when anything that easy fits.
+  function replacementFor(state, index, { easier = false } = {}) {
+    const { plan } = state;
+    const old = plan.exercises[index];
+    const inPlan = new Set(plan.exercises.map((item) => item.id));
+    const filters = filtersFor(plan.profile, { avoid: state.avoid, missing: state.missing });
+    const candidates = catalog.substitutes(old.id, filters).filter((candidate) => !inPlan.has(candidate.id));
+    const oldLevel = LEVELS.indexOf(catalog.get(old.id).level);
+    const exercise = (easier && candidates.find((candidate) => LEVELS.indexOf(candidate.level) <= oldLevel)) || candidates[0];
+    return exercise ? toPlanItem(exercise, old, plan.profile.level) : null;
+  }
+
+  function applyChange(session, change) {
+    const state = session.coachState;
+    const { runner, plan } = state;
+    const index = runner.targetIndex();
+    if (index === null) return;
+    if (change.kind === "skip") runner.skip();
+    else if (change.kind === "fewer_sets") runner.fewerSets();
+    else if (change.kind === "swap") {
+      const item = replacementFor(state, index, { easier: true });
+      if (item) runner.replace(index, item);
+      else runner.skip();
+    } else if (change.kind === "no_gear") {
+      if (!state.missing.includes(change.gear)) state.missing.push(change.gear);
+      // Every exercise still ahead that needs it; the current one is announced, the rest quietly.
+      let changed = 0;
+      for (let at = plan.exercises.length - 1; at >= index; at -= 1) {
+        const exercise = catalog.get(plan.exercises[at].id);
+        if (exercise.equipment !== change.gear && !exercise.needs.includes(change.gear)) continue;
+        changed += 1;
+        const item = replacementFor(state, at);
+        if (item) runner.replace(at, item);
+        else if (at === index) runner.skip();
+        else plan.exercises.splice(at, 1);
+      }
+      engine.record(session, "workout.no_gear", { gear: change.gear, changed });
+      publish(session);
+      // Before the first set nothing above was said out loud.
+      if (changed && ["ready", "warmup"].includes(runner.progress.phase)) {
+        engine.speakText(session, "Zmieniłem plan pod Twój sprzęt, nowe ćwiczenia widzisz na ekranie.");
+      }
+    }
+  }
+
   function startRunner(session, plan) {
     return createWorkoutRunner(plan, {
       speak: (text) => { if (!session.closed) engine.speakText(session, text); },
@@ -101,7 +159,9 @@ function createCoach({ voiceId, language = "pl", catalog = buildCatalog(), engin
   const publish = (session) => engine.emit(session, workoutEvent(session));
 
   return {
-    createState: () => ({ plan: null, runner: null, planToAnnounce: false, advanceAfterTurn: false, avoid: [] }),
+    createState: () => ({
+      plan: null, runner: null, planToAnnounce: false, advanceAfterTurn: false, change: null, avoid: [], missing: [],
+    }),
 
     speech: () => ({
       voiceId,
@@ -148,6 +208,20 @@ function createCoach({ voiceId, language = "pl", catalog = buildCatalog(), engin
           if (session.coachState.runner) session.coachState.advanceAfterTurn = true;
         },
       },
+      // Changes run after the reply is spoken (afterTurn), so the model's "dobrze" comes first.
+      { pattern: /\[SWAP\]/g, handle: (session) => queueChange(session, { kind: "swap" }) },
+      { pattern: /\[SKIP\]/g, handle: (session) => queueChange(session, { kind: "skip" }) },
+      { pattern: /\[FEWER_SETS\]/g, handle: (session) => queueChange(session, { kind: "fewer_sets" }) },
+      {
+        pattern: /\[NO_GEAR gear=(\w+)\]/g,
+        handle(session, [, gear]) {
+          if (!GEAR.includes(gear) && !EQUIPMENT.includes(gear)) {
+            engine.record(session, "workout.change_rejected", { marker: `NO_GEAR ${gear}` });
+            return;
+          }
+          queueChange(session, { kind: "no_gear", gear });
+        },
+      },
     ],
 
     // "Gotowe", "dalej", "zrobiłem 8": the step ends in code, without the model.
@@ -165,6 +239,12 @@ function createCoach({ voiceId, language = "pl", catalog = buildCatalog(), engin
     // The plan is read out with fixed text right after the reply that carried the marker.
     async afterTurn(session) {
       const state = session.coachState;
+      if (state.change) {
+        const change = state.change;
+        state.change = null;
+        applyChange(session, change);
+        return;
+      }
       if (state.advanceAfterTurn) {
         state.advanceAfterTurn = false;
         state.runner.advance();

@@ -48,6 +48,12 @@ const SAY = {
   nextSet: (item, setIndex) =>
     `Koniec przerwy. ${item.name}, seria ${ORDINAL[setIndex] || setIndex + 1} z ${item.sets}, ${target(item)}.`,
   done: () => "To ostatnia seria, trening zrobiony. Świetna robota!",
+  skipped: (item) => `Dobrze, pomijamy: ${item.name}.`,
+  shortened: (item) => `Dobrze, kończymy: ${item.name}.`,
+  lastSkipped: (item) => `Dobrze, pomijamy: ${item.name}. To był ostatni punkt, trening zrobiony.`,
+  fewerSets: (item, sets) => `Dobrze, ${item.name}: zostaje ${sets} ${sets === 1 ? "seria" : sets < 5 ? "serie" : "serii"}.`,
+  replaced: (old, item, setText) => `Zmieniamy: zamiast ${old.name} ${setText ? "robimy" : "będzie"} ${item.name}, ${target(item)}.${setText ? ` ${setText}` : ""}`,
+  setReminder: (item, setIndex) => `Seria ${ORDINAL[setIndex] || setIndex + 1} z ${item.sets}. Powiedz „gotowe” po serii.`,
 };
 
 // deps: speak(text), publish(), record(type, payload), canSpeakNow() — false
@@ -130,8 +136,76 @@ function createWorkoutRunner(plan, {
     startRest(item.restS * 1000);
   }
 
+  // Leaves the current exercise for the next one (or the end); lead: what is said first.
+  function moveToNextExercise(lead, item) {
+    clearTimer(restTimer);
+    restTimer = null;
+    restRemainingMs = null;
+    if (progress.exerciseIndex + 1 >= plan.exercises.length) {
+      progress.phase = "done";
+      progress.restEndsAt = null;
+      say(lead === "skip" ? SAY.lastSkipped(item) : `${SAY.shortened(item)} ${SAY.done()}`);
+      publish();
+      return;
+    }
+    progress.exerciseIndex += 1;
+    progress.setIndex = 0;
+    const started = progress.phase === "set" || progress.phase === "rest";
+    if (!started) {
+      // Before the first set: the plan just loses the exercise, the warm-up goes on.
+      say(SAY.skipped(item));
+      publish();
+      return;
+    }
+    say(`${lead === "skip" ? SAY.skipped(item) : SAY.shortened(item)} ${SAY.firstSet(current(), progress.exerciseIndex + 1, plan.exercises.length)}`);
+    startSet();
+  }
+
   return {
     progress,
+
+    // The exercise a change ("za ciężko", "nie mam ławki") applies to: the one
+    // in progress, or during a rest the one the next set belongs to.
+    targetIndex: () => (progress.phase === "done" ? null : progress.exerciseIndex),
+
+    // Puts another exercise in the plan; the sets done so far still count.
+    replace(index, item) {
+      const old = plan.exercises[index];
+      plan.exercises[index] = item;
+      record("workout.replaced", { from: old.id, to: item.id });
+      const inSet = progress.phase === "set" && index === progress.exerciseIndex;
+      const upcoming = index === progress.exerciseIndex && progress.phase === "rest";
+      if (inSet || upcoming) say(SAY.replaced(old, item, inSet ? SAY.setReminder(item, progress.setIndex) : null));
+      publish();
+    },
+
+    skip() {
+      if (progress.phase === "done") return false;
+      const item = current();
+      record("workout.skipped", { id: item.id });
+      moveToNextExercise("skip", item);
+      return true;
+    },
+
+    // One set fewer for the current exercise; when that leaves nothing to do, move on.
+    fewerSets() {
+      if (progress.phase === "done") return false;
+      const item = current();
+      // Sets already done; during a set the current one still counts as to do.
+      const done = ["set", "rest"].includes(progress.phase) ? progress.setIndex : 0;
+      const sets = item.sets - 1;
+      if (sets < Math.max(1, done)) return false;
+      record("workout.fewer_sets", { id: item.id, sets });
+      if (sets === done && progress.phase === "rest") {
+        item.sets = sets;
+        moveToNextExercise("shorten", item);
+        return true;
+      }
+      item.sets = sets;
+      say(SAY.fewerSets(item, sets));
+      publish();
+      return true;
+    },
 
     // The user is done with the current step; reps: what they said ("zrobiłem 8").
     // Returns false when there is nothing to move on from (no plan step, done).
