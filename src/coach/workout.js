@@ -17,6 +17,8 @@ const ADVANCE_WORDS = new Set([
   "skonczone", "nastepne", "nastepna", "nastepny", "lecimy", "jedziemy", "zaczynamy",
 ]);
 const MAX_ADVANCE_WORDS = 5;
+// "Boli mnie kolano, gotowe" is a pain report for the model, not the end of a set.
+const PAIN_WORDS = /\b(?:bol[iąaeęoy]\w*|ból\w*|bolesn\w*|uraz\w*|kontuzj\w*|naderw\w*|skręcon\w*|skręcił\w*|zwichn\w*|kłuj\w*|strzyk\w*|ciągnie)/iu;
 const NUMBER_WORDS = {
   jeden: 1, jedno: 1, dwa: 2, dwie: 2, trzy: 3, cztery: 4, piec: 5, szesc: 6, siedem: 7, osiem: 8, dziewiec: 9,
   dziesiec: 10, jedenascie: 11, dwanascie: 12, trzynascie: 13, czternascie: 14, pietnascie: 15, dwadziescia: 20,
@@ -26,7 +28,7 @@ const NUMBER_WORDS = {
 // it is anything else (a question, "nie jestem gotowy") — that goes to the model.
 function advanceIntent(text) {
   const words = normalizeWords(text);
-  if (!words.length || words.length > MAX_ADVANCE_WORDS || words.includes("nie")) return null;
+  if (!words.length || words.length > MAX_ADVANCE_WORDS || words.includes("nie") || PAIN_WORDS.test(text)) return null;
   if (!words.some((word) => ADVANCE_WORDS.has(word))) return null;
   const digits = String(text).match(/\d+/);
   const spoken = words.map((word) => NUMBER_WORDS[word]).find(Boolean);
@@ -136,15 +138,16 @@ function createWorkoutRunner(plan, {
     startRest(item.restS * 1000);
   }
 
-  // Leaves the current exercise for the next one (or the end); lead: what is said first.
-  function moveToNextExercise(lead, item) {
+  // Leaves the current exercise for the next one (or the end); how: "skip" or
+  // "shorten"; lead: said before it.
+  function moveToNextExercise(how, item, lead = "") {
     clearTimer(restTimer);
     restTimer = null;
     restRemainingMs = null;
     if (progress.exerciseIndex + 1 >= plan.exercises.length) {
       progress.phase = "done";
       progress.restEndsAt = null;
-      say(lead === "skip" ? SAY.lastSkipped(item) : `${SAY.shortened(item)} ${SAY.done()}`);
+      say(`${lead}${how === "skip" ? SAY.lastSkipped(item) : `${SAY.shortened(item)} ${SAY.done()}`}`);
       publish();
       return;
     }
@@ -153,11 +156,11 @@ function createWorkoutRunner(plan, {
     const started = progress.phase === "set" || progress.phase === "rest";
     if (!started) {
       // Before the first set: the plan just loses the exercise, the warm-up goes on.
-      say(SAY.skipped(item));
+      say(`${lead}${SAY.skipped(item)}`);
       publish();
       return;
     }
-    say(`${lead === "skip" ? SAY.skipped(item) : SAY.shortened(item)} ${SAY.firstSet(current(), progress.exerciseIndex + 1, plan.exercises.length)}`);
+    say(`${lead}${how === "skip" ? SAY.skipped(item) : SAY.shortened(item)} ${SAY.firstSet(current(), progress.exerciseIndex + 1, plan.exercises.length)}`);
     startSet();
   }
 
@@ -169,22 +172,35 @@ function createWorkoutRunner(plan, {
     targetIndex: () => (progress.phase === "done" ? null : progress.exerciseIndex),
 
     // Puts another exercise in the plan; the sets done so far still count.
-    replace(index, item) {
+    // lead: said first, in the same breath (a second speak would cut this one off).
+    // Returns whether anything was said.
+    replace(index, item, { lead = "" } = {}) {
       const old = plan.exercises[index];
       plan.exercises[index] = item;
       record("workout.replaced", { from: old.id, to: item.id });
       const inSet = progress.phase === "set" && index === progress.exerciseIndex;
       const upcoming = index === progress.exerciseIndex && progress.phase === "rest";
-      if (inSet || upcoming) say(SAY.replaced(old, item, inSet ? SAY.setReminder(item, progress.setIndex) : null));
       publish();
+      if (!inSet && !upcoming) return false;
+      say(`${lead}${SAY.replaced(old, item, inSet ? SAY.setReminder(item, progress.setIndex) : null)}`);
+      return true;
     },
 
-    skip() {
+    skip({ lead = "" } = {}) {
       if (progress.phase === "done") return false;
       const item = current();
       record("workout.skipped", { id: item.id });
-      moveToNextExercise("skip", item);
+      moveToNextExercise("skip", item, lead);
       return true;
+    },
+
+    // Drops an entry not started yet (nothing to replace it with); nothing is said.
+    remove(index) {
+      const started = ["set", "rest", "done"].includes(progress.phase);
+      if (started ? index <= progress.exerciseIndex : index < progress.exerciseIndex) return;
+      record("workout.removed", { id: plan.exercises[index].id });
+      plan.exercises.splice(index, 1);
+      publish();
     },
 
     // One set fewer for the current exercise; when that leaves nothing to do, move on.

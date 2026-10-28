@@ -31,6 +31,7 @@ const { createGroqWhisperStt } = require("./src/adapters/stt/groq-whisper");
 const { createLiveAvatarLite } = require("./src/adapters/avatar/liveavatar-lite");
 const { createCoach } = require("./src/coach");
 const { createCueSpeaker } = require("./src/coach/cues");
+const { createInjuryStore } = require("./src/coach/injury-store");
 const { diffUsage, usageLine } = require("./src/usage");
 
 const HOST = process.env.HOST || "127.0.0.1";
@@ -46,9 +47,17 @@ const SSE_HEARTBEAT_MS = 20000;
 const YOLO_POSE_WS_URL = (process.env.YOLO_POSE_WS_URL || "").trim();
 if (YOLO_POSE_WS_URL) enableCamera(YOLO_POSE_WS_URL);
 
+// Injuries kept between sessions (Supabase); null without SUPABASE_* — the session
+// still adapts to what the user says, it is just not remembered.
+const injuries = createInjuryStore({
+  url: process.env.SUPABASE_URL,
+  serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+  userId: process.env.GYM_COACH_USER_ID || "local",
+});
+
 // Break and end of the session (voice and buttons) wrap the app's coach;
 // texts can be passed here to fit the app ("trening", "lekcja").
-const coach = engine.withSessionControl(createCoach({ voiceId: process.env.ELEVENLABS_VOICE_ID }), {
+const coach = engine.withSessionControl(createCoach({ voiceId: process.env.ELEVENLABS_VOICE_ID, injuries }), {
   texts: {
     pause: "Dobrze, robimy przerwę w treningu. Powiedz, kiedy chcesz kontynuować.",
     farewell: "Dzięki za wspólną rozmowę o treningu. Do zobaczenia!",
@@ -143,6 +152,8 @@ const ROUTES = {
       tts,
       avatar,
       coach,
+      // Read before the greeting, so the plan and the first question already know them.
+      setup: { injuries: injuries ? await injuries.active() : [] },
       options: {
         firstTokenTimeoutMs: envNumber("LLM_FIRST_TOKEN_TIMEOUT_MS", 8000),
         turnTimeoutMs: envNumber("TURN_TIMEOUT_MS", 31100),

@@ -3,6 +3,20 @@ const { planWorkout, describePlan, toPlanItem, filtersFor, GOALS, EQUIPMENT_PRES
 const { EQUIPMENT, GEAR, LEVELS } = require("./exercises");
 const { createWorkoutRunner, advanceIntent } = require("./workout");
 const { cueBlockedBy } = require("./cues");
+const { BODY_PARTS } = require("./exercises");
+const { SEVERITIES } = require("./injury-store");
+
+// For speech and the prompt; code matches on the ids only.
+const BODY_PART_NAMES = {
+  shoulder_left: "lewy bark", shoulder_right: "prawy bark", elbow_left: "lewy łokieć", elbow_right: "prawy łokieć",
+  knee_left: "lewe kolano", knee_right: "prawe kolano", wrist_left: "lewy nadgarstek", wrist_right: "prawy nadgarstek",
+  ankle_left: "lewa kostka", ankle_right: "prawa kostka", hip_left: "lewe biodro", hip_right: "prawe biodro",
+  lower_back: "dolny odcinek pleców", upper_back: "górny odcinek pleców", neck: "szyja",
+  calf_left: "lewa łydka", calf_right: "prawa łydka", hamstring_left: "lewy tył uda", hamstring_right: "prawy tył uda",
+  ribs: "żebra", groin: "pachwina", other: "inne miejsce",
+};
+
+const BODY_PART_IDS = BODY_PARTS.join(", ");
 
 const SYSTEM_PROMPT = `Jesteś Gym Coachem, trenerem siłowym w aplikacji głosowej z awatarem.
 Rozmawiasz po polsku, naturalnie i konkretnie. Odpowiadasz krótko: jedno lub dwa zdania,
@@ -28,6 +42,14 @@ Zmiany planu robi aplikacja; Ty tylko potwierdzasz jednym krótkim zdaniem i dop
 pullup_bar (drążek), dip_bars (poręcze), box (podest), ab_wheel (kółko), barbell (sztanga),
 dumbbell (hantle), kettlebell, cable (wyciąg) albo machine (maszyny).
 Nie wymieniaj sam nowego ćwiczenia: poda je aplikacja.
+Ból i kontuzje: gdy użytkownik mówi, że coś go boli albo ma uraz (teraz albo w przeszłości,
+także w trakcie wywiadu), odpowiedz krótko i ze spokojem, nie zachęcaj do ćwiczenia przez ból
+i dopisz znacznik [PAIN part=<partia> severity=<low|medium|high>], gdzie partia to dokładnie
+jedna wartość z listy: ${BODY_PART_IDS}. Gdy nie da się jej przypisać, użyj other.
+Aplikacja sama przerwie ćwiczenie, dobierze zamiennik i zapamięta to na kolejne treningi.
+Gdy mówi, że coś już nie boli, dopisz [PAIN_RESOLVED part=<partia>].
+Przy bólu w klatce piersiowej, duszności, zawrotach głowy albo drętwieniu każ przerwać trening,
+poradź kontakt z lekarzem i dopisz [END].
 Nie masz obrazu z kamery ani pomiaru ruchu. Nie twierdź, że widzisz technikę,
 liczysz powtórzenia lub oceniasz wykonanie ćwiczenia.
 Gdy kamera jest włączona, aplikacja sama wypowiada w Twoim imieniu krótkie uwagi
@@ -67,6 +89,14 @@ function planContext(plan, progress) {
   return `Plan dzisiejszego treningu (ułożony przez aplikację, nie zmieniaj go sam):\nRozgrzewka 5 min\n${items.join("\n")}\n${now}`;
 }
 
+// What the model knows about the user's injuries, so it can ask how they are and stay careful.
+function injuryContext(injuries) {
+  const lines = injuries.map((injury) => `${BODY_PART_NAMES[injury.body_part] || injury.body_part}`
+    + `${injury.severity ? ` (${injury.severity})` : ""}${injury.note ? `: „${injury.note}”` : ""}`);
+  return `Zgłoszone dolegliwości (aktywne): ${lines.join("; ")}. Plan omija ćwiczenia obciążające te miejsca. `
+    + "Na początku zapytaj krótko, jak się teraz czują.";
+}
+
 // Timers of a session that has ended must not keep the process (or a test) alive.
 const unrefTimer = (fn, ms) => {
   const timer = setTimeout(fn, ms);
@@ -90,7 +120,8 @@ const COURTESY_WORDS = [
 ];
 
 // engine: emit and speakText of src/engine, passed in by server.js; tests pass the same.
-function createCoach({ voiceId, language = "pl", catalog = buildCatalog(), engine = require("../engine") }) {
+// injuries: src/coach/injury-store.js, or null without Supabase (the session still adapts).
+function createCoach({ voiceId, language = "pl", catalog = buildCatalog(), engine = require("../engine"), injuries: injuryStore = null }) {
   // The workout as the page shows it; sent on every change and to a page that (re)joins.
   function workoutEvent(session) {
     const { plan, runner } = session.coachState;
@@ -114,6 +145,63 @@ function createCoach({ voiceId, language = "pl", catalog = buildCatalog(), engin
     return exercise ? toPlanItem(exercise, old, plan.profile.level) : null;
   }
 
+  // Every plan entry from `from` on that `drop(exercise)` rules out gets a replacement
+  // (or leaves the plan); the current one is announced, with `lead` first.
+  // Returns { changed, spoken }.
+  function replaceAhead(session, from, drop, { lead = "", easier = false } = {}) {
+    const state = session.coachState;
+    const { runner, plan } = state;
+    let changed = 0;
+    let spoken = false;
+    for (let at = plan.exercises.length - 1; at >= from; at -= 1) {
+      if (!drop(catalog.get(plan.exercises[at].id))) continue;
+      changed += 1;
+      const item = replacementFor(state, at, { easier });
+      const isCurrent = at === from;
+      if (item) spoken = runner.replace(at, item, { lead: isCurrent ? lead : "" }) || spoken;
+      else if (isCurrent && ["set", "rest"].includes(runner.progress.phase)) spoken = runner.skip({ lead }) || spoken;
+      else runner.remove(at);
+    }
+    return { changed, spoken };
+  }
+
+  // Pain right now: the exercise stops, the rest of the plan leaves that body
+  // part alone, and the report is kept for the next sessions.
+  function handlePain(session, { part, severity, note }) {
+    const state = session.coachState;
+    const name = BODY_PART_NAMES[part];
+    engine.record(session, "injury.reported", { part, severity });
+    if (!state.injuries.some((injury) => injury.body_part === part)) {
+      state.injuries.push({ body_part: part, severity, note: note || null });
+    }
+    if (part !== "other" && !state.avoid.includes(part)) state.avoid.push(part);
+    injuryStore?.report({ bodyPart: part, severity, note, sessionId: session.id })
+      .then((saved) => engine.record(session, saved ? "injury.saved" : "injury.save_failed", { part }));
+
+    const caution = severity === "high"
+      ? " Przy ostrym bólu lepiej dziś skończyć: powiedz „kończymy”, jeśli tak czujesz."
+      : "";
+    const { runner } = state;
+    if (!runner || part === "other" || runner.progress.phase === "done") {
+      if (caution) engine.speakText(session, caution.trim());
+      return;
+    }
+    const lead = `Przerywamy, nie obciążamy: ${name}.${caution} `;
+    const { changed, spoken } = replaceAhead(session, runner.targetIndex(), (exercise) => exercise.loads.includes(part), { lead });
+    publish(session);
+    if (spoken) return;
+    if (changed) engine.speakText(session, `Zmieniłem plan tak, żeby nie obciążać: ${name}. Nowe ćwiczenia widzisz na ekranie.${caution}`);
+    else if (caution) engine.speakText(session, caution.trim());
+  }
+
+  function resolvePain(session, part) {
+    const state = session.coachState;
+    engine.record(session, "injury.resolved", { part });
+    state.injuries = state.injuries.filter((injury) => injury.body_part !== part);
+    // The plan of this session stays as it is; the next one may load the part again.
+    injuryStore?.report({ bodyPart: part, status: "resolved", sessionId: session.id });
+  }
+
   function applyChange(session, change) {
     const state = session.coachState;
     const { runner, plan } = state;
@@ -127,17 +215,8 @@ function createCoach({ voiceId, language = "pl", catalog = buildCatalog(), engin
       else runner.skip();
     } else if (change.kind === "no_gear") {
       if (!state.missing.includes(change.gear)) state.missing.push(change.gear);
-      // Every exercise still ahead that needs it; the current one is announced, the rest quietly.
-      let changed = 0;
-      for (let at = plan.exercises.length - 1; at >= index; at -= 1) {
-        const exercise = catalog.get(plan.exercises[at].id);
-        if (exercise.equipment !== change.gear && !exercise.needs.includes(change.gear)) continue;
-        changed += 1;
-        const item = replacementFor(state, at);
-        if (item) runner.replace(at, item);
-        else if (at === index) runner.skip();
-        else plan.exercises.splice(at, 1);
-      }
+      const { changed } = replaceAhead(session, index,
+        (exercise) => exercise.equipment === change.gear || exercise.needs.includes(change.gear));
       engine.record(session, "workout.no_gear", { gear: change.gear, changed });
       publish(session);
       // Before the first set nothing above was said out loud.
@@ -159,9 +238,16 @@ function createCoach({ voiceId, language = "pl", catalog = buildCatalog(), engin
   const publish = (session) => engine.emit(session, workoutEvent(session));
 
   return {
-    createState: () => ({
-      plan: null, runner: null, planToAnnounce: false, advanceAfterTurn: false, change: null, avoid: [], missing: [],
-    }),
+    // setup.injuries: active ones from earlier sessions (read by server.js before the start).
+    createState: (setup = {}) => {
+      const injuries = (setup.injuries || []).filter((injury) => BODY_PARTS.includes(injury.body_part));
+      return {
+        plan: null, runner: null, planToAnnounce: false, advanceAfterTurn: false, change: null, missing: [],
+        injuries,
+        // "other" maps to no exercise: the model knows about it, the filter cannot use it.
+        avoid: injuries.map((injury) => injury.body_part).filter((part) => part !== "other"),
+      };
+    },
 
     speech: () => ({
       voiceId,
@@ -173,9 +259,10 @@ function createCoach({ voiceId, language = "pl", catalog = buildCatalog(), engin
     }),
 
     buildMessages(session, { userText }) {
-      const { plan, runner } = session.coachState;
+      const { plan, runner, injuries } = session.coachState;
       const messages = [
         { role: "system", content: SYSTEM_PROMPT },
+        ...(injuries.length ? [{ role: "system", content: injuryContext(injuries) }] : []),
         ...(plan ? [{ role: "system", content: planContext(plan, runner.progress) }] : []),
         ...session.history,
       ];
@@ -213,6 +300,22 @@ function createCoach({ voiceId, language = "pl", catalog = buildCatalog(), engin
       { pattern: /\[SKIP\]/g, handle: (session) => queueChange(session, { kind: "skip" }) },
       { pattern: /\[FEWER_SETS\]/g, handle: (session) => queueChange(session, { kind: "fewer_sets" }) },
       {
+        pattern: /\[PAIN part=(\w+)(?: severity=(\w+))?\]/g,
+        handle(session, [, part, severity]) {
+          if (!BODY_PARTS.includes(part)) {
+            engine.record(session, "injury.rejected", { part });
+            return;
+          }
+          session.coachState.pain = { part, severity: SEVERITIES.includes(severity) ? severity : null };
+        },
+      },
+      {
+        pattern: /\[PAIN_RESOLVED part=(\w+)\]/g,
+        handle(session, [, part]) {
+          if (BODY_PARTS.includes(part)) session.coachState.painResolved = part;
+        },
+      },
+      {
         pattern: /\[NO_GEAR gear=(\w+)\]/g,
         handle(session, [, gear]) {
           if (!GEAR.includes(gear) && !EQUIPMENT.includes(gear)) {
@@ -237,8 +340,19 @@ function createCoach({ voiceId, language = "pl", catalog = buildCatalog(), engin
     onResume: (session) => session.coachState.runner?.resume(),
 
     // The plan is read out with fixed text right after the reply that carried the marker.
-    async afterTurn(session) {
+    async afterTurn(session, { userText } = {}) {
       const state = session.coachState;
+      if (state.painResolved) {
+        const part = state.painResolved;
+        state.painResolved = null;
+        resolvePain(session, part);
+      }
+      if (state.pain) {
+        const pain = state.pain;
+        state.pain = null;
+        handlePain(session, { ...pain, note: userText });
+        return;
+      }
       if (state.change) {
         const change = state.change;
         state.change = null;
