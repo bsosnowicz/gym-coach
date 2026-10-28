@@ -49,6 +49,23 @@ Vite działa na http://localhost:5174/app/ i przekazuje `/api` do serwera na 300
 
 Bez kamery liczbę powtórzeń podaje użytkownik („zrobiłem 8”); na etapie 05 może ją podawać YOLO.
 
+### Plany między sesjami (etap 10)
+
+- **Ciężar.** „Zrobiłem 8 na 60 kilo” zapisuje powtórzenia i ciężar serii w dzienniku.
+- **Progresja** (`src/coach/progression.js`): dla każdego ćwiczenia decyduje ostatnia sesja,
+  w której było. Komplet serii i powtórzeń → dziś więcej (sztanga +2,5 kg, hantle +2, kettlebell
+  +4, maszyna +5; bez ciężaru +2 powtórzenia, deska +10 s); coś nie wyszło → tyle samo.
+  Trener mówi to przy pierwszej serii.
+- **Różnorodność A/B:** w każdym slocie wygrywa ćwiczenie, którego nie było w ostatniej sesji.
+- **Partia mięśni:** „chcę popracować nad tyłem uda” → `focus=hamstrings`; do dwóch ćwiczeń
+  na tę partię na początku planu, tylko bezpieczne przy kontuzjach.
+- **Kontuzje:** zapisuje się każda wzmianka o urazie, także bez słowa „boli” i podana jako cel
+  (zapas w kodzie, `src/coach/body-mentions.js`, gdy model nie dopisze znacznika); ta sama
+  partia zapisuje się ponownie tylko przy mocniejszym bólu. Ból zgłoszony w czasie przerwy
+  w sesji jest zapisany od razu, a plan zmienia się po powrocie.
+- Przeciwwskazania jak w jodze: każdy wzorzec ruchu ma listę twardą (ćwiczenie wypada zawsze)
+  i miękką (wypada, chyba że ból jest lekki); nakładka dopisuje partie pojedynczym ćwiczeniom.
+
 ### Katalog ćwiczeń
 
 `data/exercises.json` to [free-exercise-db](https://github.com/yuhonas/free-exercise-db)
@@ -63,8 +80,9 @@ Nowe ćwiczenie: dopisz wpis do nakładki z `id` z bazy; `npm test` sprawdzi, cz
 
 Bez `SUPABASE_*` trening działa, tylko niczego nie pamięta między sesjami. Z bazą:
 
-1. Załóż projekt Supabase i uruchom migracje z `supabase/migrations/` (SQL Editor albo
-   `supabase db push`): `user_injuries` i `workout_sessions`.
+1. Załóż projekt Supabase i uruchom migracje z `supabase/migrations/` po kolei (SQL Editor
+   albo `supabase db push`): `user_injuries`, `workout_sessions` i `user_injuries_unique`
+   (scala duplikaty i pilnuje jednego wiersza na partię ciała).
 2. W `.env`: `SUPABASE_URL` (sam adres projektu, `https://<ref>.supabase.co`),
    `SUPABASE_SECRET_KEY` (Project Settings → API Keys → Secret key `sb_secret_…`, tylko serwer;
    starszy JWT `service_role` może być pod `SUPABASE_SERVICE_ROLE_KEY`), `GYM_COACH_USER_ID`
@@ -158,6 +176,8 @@ sprawdź w interfejsie według instrukcji powyżej.
 
 - [x] 04: aplikacja z szablonu, domena Gym Coacha i polska rozmowa głosowa.
 - [x] 03: kamera i `yolo-backend` z `yoga-startup`, korekta postawy głosem (scenariusz `standing`).
+- [x] 10: plany między sesjami — ciężar, progresja, różnorodność A/B, partia mięśni;
+  kontuzje bez duplikatów i z przerwy w sesji.
 - [x] 04b: prowadzenie treningu głosem — katalog z free-exercise-db, plan z rozmowy, serie
   i przerwy, podgląd na żywo, zmiany w locie, ból i kontuzje oraz dziennik w Supabase.
 - [ ] 05: fazy ruchu i liczenie powtórzeń.
