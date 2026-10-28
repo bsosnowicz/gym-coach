@@ -113,10 +113,20 @@ const SAY = {
   skipped: (item) => `Dobrze, pomijamy: ${item.name}.`,
   shortened: (item) => `Dobrze, kończymy: ${item.name}.`,
   lastSkipped: (item, completed) => `Dobrze, pomijamy: ${item.name}. To był ostatni punkt. ${summary(completed)}`,
+  weightChanged: (item, kg, up) => (kg
+    ? `Dobrze, ${item.name}: ${up ? "zwiększamy" : "zmniejszamy"} do ${kgText(kg)}.`
+    : `Dobrze, weź ${up ? "więcej" : "lżej"} i po serii powiedz, ile było.`),
+  moreSets: (item, sets) => `Dobrze, ${item.name}: robimy ${sets} serii.`,
+  restChanged: (seconds) => `Dobrze, przerwy po ${restText(seconds)}.`,
   fewerSets: (item, sets) => `Dobrze, ${item.name}: zostaje ${sets} ${sets === 1 ? "seria" : sets < 5 ? "serie" : "serii"}.`,
   replaced: (old, item, setText) => `Zmieniamy: zamiast ${old.name} ${setText ? "robimy" : "będzie"} ${item.name}, ${target(item)}.${setText ? ` ${setText}` : ""}`,
   setReminder: (item, setIndex) => `Seria ${ORDINAL[setIndex] || setIndex + 1} z ${item.sets}. Powiedz „gotowe” po serii.`,
 };
+
+const MAX_SETS = 6;
+const MIN_REST_S = 30;
+const MAX_REST_S = 300;
+const REST_STEP_S = 30;
 
 // deps: speak(text), publish(), record(type, payload), canSpeakNow() — false
 // while the coach or the user is talking; finishNote() — said after the
@@ -322,6 +332,57 @@ function createWorkoutRunner(plan, {
       record("workout.removed", { id: plan.exercises[index].id });
       plan.exercises.splice(index, 1);
       publish();
+    },
+
+    // "Za ciężko", "daj więcej", "zmień na 50 kilo" for the current exercise:
+    // kg — the weight said; otherwise about 10% (at least one step) down or up.
+    // false for an exercise without a weight: the coach swaps it instead.
+    changeWeight({ up, kg = null }) {
+      const index = progress.phase === "done" ? null : progress.exerciseIndex;
+      const item = index === null ? null : plan.exercises[index];
+      if (!item || !hasWeight(item)) return false;
+      pendingAdjust = null;
+      const step = WEIGHT_STEP_KG[item.equipment];
+      const was = item.kg || null;
+      const next = kg || (was ? Math.max(step, was + (up ? 1 : -1) * Math.max(step, Math.round((was * 0.1) / step) * step)) : null);
+      if (next) item.kg = next;
+      record("workout.weight_changed", { id: item.id, from: was, kg: next, up });
+      say(SAY.weightChanged(item, next, kg ? kg > (was || 0) : up));
+      publish();
+      return true;
+    },
+
+    // One set more for the current exercise.
+    moreSets() {
+      if (progress.phase === "done") return false;
+      const item = current();
+      if (item.sets >= MAX_SETS) return false;
+      item.sets += 1;
+      record("workout.more_sets", { id: item.id, sets: item.sets });
+      say(SAY.moreSets(item, item.sets));
+      publish();
+      return true;
+    },
+
+    // Longer or shorter rests for the current exercise (seconds, or ±30 s); a
+    // rest running now changes by the same amount.
+    changeRest({ seconds = null, longer = true }) {
+      if (progress.phase === "done") return false;
+      const item = current();
+      const restS = Math.min(MAX_REST_S, Math.max(MIN_REST_S, seconds || item.restS + (longer ? REST_STEP_S : -REST_STEP_S)));
+      const delta = restS - item.restS;
+      item.restS = restS;
+      record("workout.rest_changed", { id: item.id, restS });
+      if (progress.phase === "rest" && restTimer) {
+        clearTimer(restTimer);
+        restTimer = null;
+        startRest(Math.max(0, progress.restEndsAt - now()) + delta * 1000);
+      } else if (progress.phase === "rest" && restRemainingMs !== null) {
+        restRemainingMs = Math.max(0, restRemainingMs + delta * 1000);
+      }
+      say(SAY.restChanged(restS));
+      publish();
+      return true;
     },
 
     // One set fewer for the current exercise; when that leaves nothing to do, move on.

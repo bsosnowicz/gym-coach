@@ -32,6 +32,48 @@ npm run dev:web
 
 Vite działa na http://localhost:5174/app/ i przekazuje `/api` do serwera na 3001.
 
+## Plan tygodnia (etap 12)
+
+Dwa rodzaje rozmowy. Bez aktywnego planu (albo po przycisku **Nowy plan / wywiad**, głosem
+„ułóż nowy plan”) trener prowadzi **wywiad**: cel, staż, ile dni i które, ile minut, sprzęt,
+wiek, wzrost, waga, płeć, partie priorytetowe, kontuzje. Model pisze
+`[PROFILE goal=… level=… equipment=… days=… minutes=… weekdays=… age=… sex=… height=… weight=… priorities=…]`,
+trener czyta podsumowanie, a po „tak” kod układa plan na tydzień (`src/coach/week-plan.js`),
+zapisuje profil i plan (wariant A) i pyta, czy zacząć dzisiejszy trening.
+Z planem sesja jest **treningiem z dnia planu**: krótko „jak się czujesz, masz tyle czasu co
+zwykle?”, potem `[TODAY]` (`minutes=30` — krócej, `day=thu` — inny dzień planu).
+
+Zasady trenerskie są w jednym miejscu, `src/coach/programming.js`:
+
+| Dni / poziom | Split |
+| --- | --- |
+| 1–3 dni | full body (zaawansowany przy 3 dniach: push / pull / nogi) |
+| 4 dni | góra / dół |
+| 5 dni | push / pull / nogi + góra / dół (zaawansowany: split na partie) |
+| 6 dni | push / pull / nogi dwa razy |
+| początkujący | najwyżej 4 dni, full body albo góra / dół |
+
+- Te same mięśnie co najmniej 48 h przerwy; własne dni łamiące tę zasadę dostają ostrzeżenie.
+- Intensywność z celu: siła — ciężka (5 powt., przerwy 3 min / 90 s), masa i sprawność —
+  umiarkowana (10 powt., 2 min / 75 s), kondycja — lekka (15 powt., 60 / 45 s); krótsza przerwa
+  w ćwiczeniach izolowanych. Początkujący i osoby po 60. roku życia z celem „siła” zaczynają
+  od umiarkowanej.
+- Serie tygodniowo na grupę (klatka, plecy, przód uda, tył uda z pośladkami, barki):
+  początkujący 8–10, średni 10–15, zaawansowany 15–20. Za mało — seria więcej (akcesoria
+  robią miejsce w czasie treningu), za dużo — najpierw odpada nadmiarowe ćwiczenie.
+- Wielostawowe przed izolowanymi, partie priorytetowe na początku i z serią więcej; dzień
+  splitu (pull, nogi…) bez dopełniania innymi partiami; drugi dzień tego samego typu ma inne
+  ćwiczenia.
+- Co 5. tydzień lżejszy: ok. 60% serii, ciężary bez zmian.
+
+**Warianty:** zamiana albo usunięcie ćwiczenia w trakcie treningu zapisuje plan jako
+wariant B (rodzic: A), A zostaje; kolejne zmiany nadpisują B. Pominięcie i mniej serii są
+tylko na dziś. Na koniec trener o tym mówi; „wróć do wariantu A” przełącza z powrotem.
+
+**Kalendarz** pod przyciskami: tydzień, dziś zaznaczony, ćwiczenia wybranego dnia, split,
+intensywność, wariant (`web/src/workout/WeekCalendar.jsx`, dane z `GET /api/plan`
+i zdarzenia `week_plan`).
+
 ## Trening głosem
 
 1. **Wywiad.** Trener pyta o cel, poziom, sprzęt i czas. Gdy zna odpowiedzi, model pisze
@@ -40,8 +82,11 @@ Vite działa na http://localhost:5174/app/ i przekazuje `/api` do serwera na 300
 2. **Prowadzenie.** „Gotowe” / „dalej” / „zrobiłem 8” kończy rozgrzewkę albo serię — bez
    modelu (`src/coach/workout.js`). Przerwę odlicza serwer, „gotowe” w przerwie ją skraca.
    Panel pokazuje bieżące ćwiczenie, serię i odliczanie. Przycisk Przerwa wstrzymuje odliczanie.
-3. **Zmiany.** „Za ciężko” → zamiennik nie trudniejszy; „nie mam ławki” → wymiana wszystkich
-   ćwiczeń z ławką; „pomińmy to”; „zróbmy mniej serii”.
+3. **Zmiany.** „Za ciężko” → mniejszy ciężar o ok. 10% (ćwiczenie bez ciężaru: łatwiejszy
+   zamiennik), „za lekko” / „daj 70 kilo” → więcej; „nie pasuje mi” → zamiennik nie
+   trudniejszy, „zamień na hantle” → zamiennik na hantlach; „nie mam ławki” → wymiana
+   wszystkich ćwiczeń z ławką; „pomińmy to”; mniej albo więcej serii; dłuższe / krótsze
+   przerwy (±30 s albo podana liczba, także ta, która trwa).
 4. **Ból.** „Boli mnie prawe kolano” → ćwiczenie przerwane od razu, zamiennik i reszta planu
    bez obciążania kolana; przy ostrym bólu rada, żeby skończyć. Zgłoszenie trafia do Supabase.
 5. **Koniec.** Podsumowanie: ćwiczenia, serie, powtórzenia. Dziennik zapisuje się po każdej
@@ -94,8 +139,9 @@ Nowe ćwiczenie: dopisz wpis do nakładki z `id` z bazy; `npm test` sprawdzi, cz
 Bez `SUPABASE_*` trening działa, tylko niczego nie pamięta między sesjami. Z bazą:
 
 1. Załóż projekt Supabase i uruchom migracje z `supabase/migrations/` po kolei (SQL Editor
-   albo `supabase db push`): `user_injuries`, `workout_sessions` i `user_injuries_unique`
-   (scala duplikaty i pilnuje jednego wiersza na partię ciała).
+   albo `supabase db push`): `user_injuries`, `workout_sessions`, `user_injuries_unique`
+   (scala duplikaty i pilnuje jednego wiersza na partię ciała) i `user_profiles_training_plans`
+   (profil z wywiadu i plany tygodniowe z wariantami; jeden aktywny plan na użytkownika).
 2. W `.env`: `SUPABASE_URL` (sam adres projektu, `https://<ref>.supabase.co`),
    `SUPABASE_SECRET_KEY` (Project Settings → API Keys → Secret key `sb_secret_…`, tylko serwer;
    starszy JWT `service_role` może być pod `SUPABASE_SERVICE_ROLE_KEY`), `GYM_COACH_USER_ID`
@@ -193,6 +239,8 @@ sprawdź w interfejsie według instrukcji powyżej.
   kontuzje bez duplikatów i z przerwy w sesji.
 - [x] 04b: prowadzenie treningu głosem — katalog z free-exercise-db, plan z rozmowy, serie
   i przerwy, podgląd na żywo, zmiany w locie, ból i kontuzje oraz dziennik w Supabase.
+- [x] 12: wywiad i plan na cały tydzień według zasad trenerskich, kalendarz, trening z dnia
+  planu, warianty A/B, sygnały w trakcie (ciężar, serie, przerwy, zamiana na sprzęt).
 - [ ] 05: fazy ruchu i liczenie powtórzeń.
 - [ ] 06: scenariusze ćwiczeń i korekty techniki.
 

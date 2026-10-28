@@ -77,8 +77,12 @@ najwyżej jednym krótkim zdaniem i dopisz znacznik [NEXT], a gdy podał wynik s
 [NEXT reps=<powtórzenia> kg=<ciężar>] (każde pole tylko, jeśli padło). Na pytania o technikę odpowiadaj
 krótko, w odniesieniu do aktualnego ćwiczenia.
 Zmiany planu robi aplikacja; Ty tylko potwierdzasz jednym krótkim zdaniem i dopisujesz znacznik:
-[SWAP] gdy ćwiczenie jest za ciężkie, nie pasuje albo użytkownik chce inne;
-[SKIP] gdy chce pominąć ćwiczenie; [FEWER_SETS] gdy chce zrobić mniej serii;
+[LIGHTER] gdy ciężar jest za duży („za ciężko”, „zmniejsz”), [HEAVIER] gdy za mały („za lekko”, „dołóż”),
+a gdy podał liczbę: [LIGHTER kg=<ciężar>] albo [HEAVIER kg=<ciężar>];
+[SWAP] gdy samo ćwiczenie nie pasuje, jest za trudne technicznie albo użytkownik chce inne,
+a gdy chce inne na konkretny sprzęt: [SWAP equipment=<barbell|dumbbell|kettlebell|cable|machine|body_only|band>];
+[SKIP] gdy chce pominąć ćwiczenie; [FEWER_SETS] gdy chce zrobić mniej serii; [MORE_SETS] gdy więcej;
+[REST longer] albo [REST shorter] gdy chce dłuższe albo krótsze przerwy, a z liczbą: [REST seconds=<sekundy>];
 [NO_GEAR gear=<sprzęt>] gdy brakuje sprzętu, gdzie sprzęt to bench (ławka), rack (stojak),
 pullup_bar (drążek), dip_bars (poręcze), box (podest), ab_wheel (kółko), barbell (sztanga),
 dumbbell (hantle), kettlebell, cable (wyciąg) albo machine (maszyny).
@@ -368,12 +372,14 @@ function createCoach({
 
   // The best replacement for plan entry `index` that is not in the plan already.
   // easier: "za ciężko" — no harder than the original when anything that easy fits.
-  function replacementFor(state, index, { easier = false } = {}) {
+  // equipment: "zamień na hantle" — only exercises on that equipment.
+  function replacementFor(state, index, { easier = false, equipment = null } = {}) {
     const { plan } = state;
     const old = plan.exercises[index];
     const inPlan = new Set(plan.exercises.map((item) => item.id));
     const filters = filtersFor(plan.profile, { avoid: state.avoid, missing: state.missing });
-    const candidates = catalog.substitutes(old.id, filters).filter((candidate) => !inPlan.has(candidate.id));
+    const candidates = catalog.substitutes(old.id, filters)
+      .filter((candidate) => !inPlan.has(candidate.id) && (!equipment || candidate.equipment === equipment));
     const oldLevel = LEVELS.indexOf(catalog.get(old.id).level);
     const exercise = (easier && candidates.find((candidate) => LEVELS.indexOf(candidate.level) <= oldLevel)) || candidates[0];
     return exercise ? toPlanItem(exercise, old, plan.profile.level) : null;
@@ -507,8 +513,15 @@ function createCoach({
     if (index === null) return;
     if (change.kind === "skip") runner.skip();
     else if (change.kind === "fewer_sets") runner.fewerSets();
-    else if (change.kind === "swap") {
-      const item = replacementFor(state, index, { easier: true });
+    else if (change.kind === "more_sets") runner.moreSets();
+    else if (change.kind === "rest") runner.changeRest(change);
+    else if (change.kind === "weight") {
+      if (runner.changeWeight(change)) return;
+      // An exercise without a weight (push-ups): "za ciężko" gets an easier one.
+      if (!change.up) applyChange(session, { kind: "swap" });
+      else engine.speakText(session, "To ćwiczenie robimy bez obciążenia. Żeby było trudniej, zwolnij tempo opuszczania albo dołóż dwa powtórzenia.");
+    } else if (change.kind === "swap") {
+      const item = replacementFor(state, index, { easier: true, equipment: change.equipment });
       if (item) runner.replace(index, item);
       else runner.skip();
     } else if (change.kind === "no_gear") {
@@ -713,7 +726,19 @@ function createCoach({
         },
       },
       // Changes run after the reply is spoken (afterTurn), so the model's "dobrze" comes first.
-      { pattern: /\[SWAP\]/g, handle: (session) => queueChange(session, { kind: "swap" }) },
+      {
+        pattern: /\[SWAP(?: equipment=(\w+))?\]/g,
+        handle: (session, [, equipment]) => queueChange(session, { kind: "swap", equipment: EQUIPMENT.includes(equipment) ? equipment : null }),
+      },
+      {
+        pattern: /\[(LIGHTER|HEAVIER)(?: kg=([\d.,]+))?\]/g,
+        handle: (session, [, way, kg]) => queueChange(session, { kind: "weight", up: way === "HEAVIER", kg: Number(kg?.replace(",", ".")) || null }),
+      },
+      { pattern: /\[MORE_SETS\]/g, handle: (session) => queueChange(session, { kind: "more_sets" }) },
+      {
+        pattern: /\[REST(?: (longer|shorter))?(?: seconds=(\d+))?\]/g,
+        handle: (session, [, way, seconds]) => queueChange(session, { kind: "rest", longer: way !== "shorter", seconds: Number(seconds) || null }),
+      },
       { pattern: /\[SKIP\]/g, handle: (session) => queueChange(session, { kind: "skip" }) },
       { pattern: /\[FEWER_SETS\]/g, handle: (session) => queueChange(session, { kind: "fewer_sets" }) },
       {
