@@ -80,12 +80,19 @@ test("Wywiad: znacznik → podsumowanie → „tak” → plan tygodnia powiedzi
   assert.equal(calls.length, 2, "„tak” bez modelu");
   assert.match(spoken().at(-1), /^Gotowe\. Twój plan to góra \/ dół, 4 treningi w tygodniu, intensywność umiarkowana: poniedziałek — góra, wtorek — dół, czwartek — góra, piątek — dół\./);
   const week = events.filter((event) => event.stage === "week_plan").at(-1);
-  assert.equal(week.mode, "interview");
+  assert.equal(week.mode, "training", "po planie sesja jest treningowa");
   assert.equal(week.week.days.length, 4);
   assert.equal(plans.saved.profiles[0].weightKg, 84.5);
   assert.equal(plans.saved.plans[0].split, "upper_lower");
   assert.equal(session.coachState.weekPlan.id, "p1", "id z bazy — pod warianty");
   assert.deepEqual(coach.weekEvent(session).week.days, week.week.days);
+  assert.match(spoken().at(-1), /(Zaczynamy dzisiejszy trening\?|Zrobimy go dziś\?)$/);
+
+  await say("Tak.");
+  assert.equal(calls.length, 2, "start dzisiejszego dnia też bez modelu");
+  assert.match(spoken().at(-1), /^Dziś w planie: (góra|dół)\./);
+  assert.equal(session.coachState.runner.progress.phase, "ready");
+  session.coachState.runner.stop();
   await endSession(session);
 });
 

@@ -10,7 +10,7 @@ const {
   chooseSplit, weekDays, chooseWeekdays, recoveryConflicts, intensityFor, restFor,
   weeklyVolume, weekOfPlan, isDeloadWeek, deloadSets,
 } = require("./programming");
-const { planWorkout, focusOf, filtersFor } = require("./planner");
+const { planWorkout, focusOf, filtersFor, describePlan } = require("./planner");
 const { applyProgression } = require("./progression");
 
 const MAX_SETS = { beginner: 4, intermediate: 5, expert: 5 };
@@ -142,8 +142,9 @@ const weekdayOf = (date = new Date()) => ["sun", "mon", "tue", "wed", "thu", "fr
 
 // Today's workout from a day of the weekly plan, in the shape of planWorkout:
 // progression from the journal, fewer sets in a deload week, exercises an
-// injury now forbids replaced by a safe substitute (or left out).
-function planFromDay(catalog, plan, day, { history = [], avoid = [], tired = false, now = Date.now() } = {}) {
+// injury now forbids replaced by a safe substitute (or left out). minutes: less
+// time today than planned — the last exercises are left out.
+function planFromDay(catalog, plan, day, { history = [], avoid = [], tired = false, now = Date.now(), minutes = null } = {}) {
   const filters = filtersFor(plan.profile, { avoid });
   const deload = isDeloadWeek(weekOfPlan(plan.startedAt || new Date(now).toISOString(), now));
   const exercises = [];
@@ -160,8 +161,9 @@ function planFromDay(catalog, plan, day, { history = [], avoid = [], tired = fal
     const progressed = applyProgression(base, exercise, history, { hold: tired || deload });
     exercises.push(deload && progressed.kg ? { ...progressed, progress: "Tydzień lżejszy: mniej serii, ciężar bez zmian." } : progressed);
   }
+  if (minutes) while (exercises.length > 2 && dayTimeS(exercises) > minutes * 60) exercises.pop();
   return {
-    profile: { ...plan.profile, focus: day.focus },
+    profile: { ...plan.profile, ...(minutes ? { minutes } : {}), focus: day.focus },
     focusAvailable: true,
     focusLimited: false,
     schemeFrom: null,
@@ -172,6 +174,23 @@ function planFromDay(catalog, plan, day, { history = [], avoid = [], tired = fal
     warmup: { durationS: 300 },
     exercises,
   };
+}
+
+// What the coach says about today's workout from the weekly plan.
+function describeToday(plan) {
+  const deload = plan.deload ? ", tydzień lżejszy: mniej serii, ciężary bez zmian" : "";
+  const tired = plan.tired ? " Te mięśnie jeszcze się regenerują, więc dziś bez podnoszenia ciężarów." : "";
+  return `Dziś w planie: ${DAY_NAMES[plan.day.type]}${deload}.${tired} ${describePlan(plan).replace(/^Mam plan na dziś\. /, "")}`;
+}
+
+// What the model knows about the weekly plan in a training session.
+function weekContext(plan, weekday) {
+  const { day, planned } = dayFor(plan, weekday);
+  const week = plan.days.map((item) => `${WEEKDAY_NAMES[item.weekday]}: ${DAY_NAMES[item.type]}`).join("; ");
+  const today = planned
+    ? `Dziś (${WEEKDAY_NAMES[weekday]}) w planie: ${DAY_NAMES[day.type]}.`
+    : `Dziś (${WEEKDAY_NAMES[weekday]}) nie ma treningu w planie; najbliższy to ${WEEKDAY_NAMES[day.weekday]}: ${DAY_NAMES[day.type]} — można go zrobić dziś.`;
+  return `Plan tygodnia (${SPLITS[plan.split].name}, wariant ${plan.variant || "A"}): ${week}. ${today}`;
 }
 
 const setsWord = (n) => (n === 1 ? "trening" : n < 5 ? "treningi" : "treningów");
@@ -187,4 +206,4 @@ function describeWeek(plan) {
     + "Plan widzisz w kalendarzu.";
 }
 
-module.exports = { buildWeekPlan, planFromDay, dayFor, weekdayOf, describeWeek, doseFor };
+module.exports = { buildWeekPlan, planFromDay, dayFor, weekdayOf, describeWeek, describeToday, weekContext, doseFor };

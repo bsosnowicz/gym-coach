@@ -9,7 +9,8 @@ const { findInjuryMentions, mentionsInjury } = require("./body-mentions");
 const { recoveryFor, agoText, RECOVERY_HOURS } = require("./schedule");
 const { normalizeWords } = require("../engine/words");
 const { INTERVIEW_PROMPT, knownProfileContext, parseProfileMarker, describeInterview, weekProfile } = require("./interview");
-const { buildWeekPlan, describeWeek } = require("./week-plan");
+const { buildWeekPlan, describeWeek, planFromDay, dayFor, weekdayOf, describeToday, weekContext } = require("./week-plan");
+const { WEEKDAYS, WEEKDAY_NAMES } = require("./programming");
 
 const severityRank = (severity) => SEVERITIES.indexOf(severity);
 
@@ -44,10 +45,12 @@ Gdy mówi, że coś już nie boli, dopisz [PAIN_RESOLVED part=<partia>].
 Przy bólu w klatce piersiowej, duszności, zawrotach głowy albo drętwieniu każ przerwać trening,
 poradź kontakt z lekarzem i dopisz [END].`;
 
-const SYSTEM_PROMPT = `Jesteś Gym Coachem, trenerem siłowym w aplikacji głosowej z awatarem.
+const PERSONA = `Jesteś Gym Coachem, trenerem siłowym w aplikacji głosowej z awatarem.
 Rozmawiasz po polsku, naturalnie i konkretnie. Odpowiadasz krótko: jedno lub dwa zdania,
-bez list, nagłówków, emotikonów i markdownu. Zadajesz najwyżej jedno pytanie naraz.
-Na początku poznaj cel treningu, potem doświadczenie użytkownika, dostępny sprzęt
+bez list, nagłówków, emotikonów i markdownu. Zadajesz najwyżej jedno pytanie naraz.`;
+
+// One workout planned from a short interview (no weekly plan).
+const QUICK_PLAN_RULES = `Na początku poznaj cel treningu, potem doświadczenie użytkownika, dostępny sprzęt
 i ile czasu ma na dzisiejszy trening.
 Wykorzystuj informacje już podane w historii, zamiast pytać ponownie.
 Niczego nie zgaduj: gdy brakuje którejś odpowiedzi, zapytaj o nią. Gdy użytkownik sam podał
@@ -64,8 +67,10 @@ ręce), core (brzuch i mięśnie głębokie) albo pojedynczy mięsień: abdomina
 forearms (przedramiona), glutes (pośladki), hamstrings (tył uda, dwugłowe uda), lats (najszersze
 grzbietu), lower_back, middle_back, neck, quadriceps (przód uda, czworogłowe), shoulders (barki),
 traps (kaptury), triceps. Planu nie wymyślaj ani nie wymieniaj ćwiczeń: plan ułoży i przeczyta aplikacja.
-Najkrótszy plan ma 10 minut: gdy ktoś ma mniej czasu, wpisz minutes=10 i powiedz, że zrobicie krótki trening.
-Gdy plan już jest, aplikacja sama zapowiada rozgrzewkę, serie, przerwy, koniec przerwy i zmiany
+Najkrótszy plan ma 10 minut: gdy ktoś ma mniej czasu, wpisz minutes=10 i powiedz, że zrobicie krótki trening.`;
+
+// While a workout runs: the app leads, the model reports intents with markers.
+const TRAINING_RULES = `Gdy plan już jest, aplikacja sama zapowiada rozgrzewkę, serie, przerwy, koniec przerwy i zmiany
 ćwiczeń. Nigdy nie zapowiadaj ich sam ani nie mów, które ćwiczenie i seria są teraz, jeśli nie
 pyta o to użytkownik. Nie obiecuj, że aplikacja „zaraz” coś zmieni: znacznik działa od razu. Gdy użytkownik mówi, że skończył rozgrzewkę albo serię, albo chce przejść dalej, odpowiedz
 najwyżej jednym krótkim zdaniem i dopisz znacznik [NEXT], a gdy podał wynik serii:
@@ -77,14 +82,26 @@ Zmiany planu robi aplikacja; Ty tylko potwierdzasz jednym krótkim zdaniem i dop
 [NO_GEAR gear=<sprzęt>] gdy brakuje sprzętu, gdzie sprzęt to bench (ławka), rack (stojak),
 pullup_bar (drążek), dip_bars (poręcze), box (podest), ab_wheel (kółko), barbell (sztanga),
 dumbbell (hantle), kettlebell, cable (wyciąg) albo machine (maszyny).
-Nie wymieniaj sam nowego ćwiczenia: poda je aplikacja.
-${PAIN_RULES}
-Nie masz obrazu z kamery ani pomiaru ruchu. Nie twierdź, że widzisz technikę,
+Nie wymieniaj sam nowego ćwiczenia: poda je aplikacja.`;
+
+const CAMERA_RULES = `Nie masz obrazu z kamery ani pomiaru ruchu. Nie twierdź, że widzisz technikę,
 liczysz powtórzenia lub oceniasz wykonanie ćwiczenia.
 Gdy kamera jest włączona, aplikacja sama wypowiada w Twoim imieniu krótkie uwagi
 o postawie, np. "Stań prosto, barki nad biodrami.". Możesz do nich nawiązać,
-ale nie dopowiadaj własnej oceny ruchu.
-Wiadomość "[EVENT: session_start]" oznacza początek sesji: przedstaw się krótko
+ale nie dopowiadaj własnej oceny ruchu.`;
+
+// A session with a weekly plan: a short check-in, then today's day of the plan.
+const WEEK_DAY_RULES = `Użytkownik ma już plan na cały tydzień, ułożony przez aplikację; nie przeprowadzaj
+wywiadu od nowa. Na początku przywitaj się, powiedz jednym zdaniem, co dziś w planie, i zapytaj,
+jak się dziś czuje i czy ma tyle czasu co zwykle. Gdy jest gotowy zacząć, dopisz znacznik [TODAY];
+gdy ma dziś mniej czasu: [TODAY minutes=<minuty>]; gdy chce zrobić inny dzień planu:
+[TODAY day=<mon|tue|wed|thu|fri|sat|sun>]. Planu nie wymyślaj ani nie wymieniaj ćwiczeń: przeczyta
+je aplikacja. Gdy chce zmienić cały plan (inny cel, inne dni, nowy wywiad), a trening jeszcze się
+nie zaczął albo już się skończył, dopisz [NEW_PLAN].`;
+
+const WEEK_PROMPT = `${PERSONA}\n${WEEK_DAY_RULES}\n${TRAINING_RULES}\n${PAIN_RULES}\n${CAMERA_RULES}\nWiadomość "[EVENT: session_start]" oznacza początek sesji: przedstaw się krótko jako Gym Coach, powiedz, co dziś w planie, i zapytaj, jak się czuje.`;
+
+const SYSTEM_PROMPT = `${PERSONA}\n${QUICK_PLAN_RULES}\n${TRAINING_RULES}\n${PAIN_RULES}\n${CAMERA_RULES}\nWiadomość "[EVENT: session_start]" oznacza początek sesji: przedstaw się krótko
 jako Gym Coach i zapytaj o cel treningu.`;
 
 // The marker the model writes once the interview is done; values are closed enums.
@@ -225,12 +242,40 @@ function createCoach({
     return { stage: "week_plan", mode, week: weekPlan };
   }
 
+  // Today's workout from the weekly plan ([TODAY], or yes right after the interview).
+  // weekday: another day of the plan; minutes: less time today.
+  function startToday(session, { weekday = null, minutes = null } = {}) {
+    const state = session.coachState;
+    const { weekPlan } = state;
+    const day = (weekday && weekPlan.days.find((item) => item.weekday === weekday)) || dayFor(weekPlan, weekdayOf()).day;
+    const recovery = recoveryFor({ ...weekPlan.profile, focus: day.focus }, state.history, { catalog, focusOf });
+    state.plan = planFromDay(catalog, weekPlan, day, { history: state.history, avoid: state.avoid, tired: Boolean(recovery), minutes });
+    state.runner = startRunner(session, state.plan);
+    engine.record(session, "workout.planned", { day: `${day.weekday}:${day.type}`, variant: weekPlan.variant, exercises: state.plan.exercises.map((item) => item.id) });
+    publish(session);
+    engine.speakText(session, describeToday(state.plan));
+  }
+
+  // [NEW_PLAN] or the page's button: the interview again, with the known profile.
+  function startInterview(session) {
+    const state = session.coachState;
+    state.mode = "interview";
+    engine.record(session, "week.interview_started", {});
+    engine.emit(session, weekEvent(session));
+    engine.speakText(session, state.profile
+      ? "Dobrze, układamy nowy plan. Co się zmieniło: cel, dni treningowe, czas czy sprzęt?"
+      : "Dobrze, układamy nowy plan. Jaki masz cel treningu?");
+  }
+
   // The interview's yes: the week is built, shown and kept (profile and plan, variant A).
   function buildWeek(session, profile) {
     const state = session.coachState;
     const built = buildWeekPlan(catalog, weekProfile(profile), { avoid: state.avoid });
     state.profile = profile;
     state.weekPlan = { ...built, id: null, variant: "A", parentId: null, startedAt: new Date().toISOString() };
+    // From here on the session is a training one: today's day can start right away.
+    state.mode = "training";
+    state.offerToday = true;
     engine.record(session, "week.planned", { split: built.split, intensity: built.intensity, days: built.days.map((day) => `${day.weekday}:${day.type}`) });
     engine.emit(session, weekEvent(session));
     if (!planStore) return;
@@ -483,7 +528,7 @@ function createCoach({
     }),
 
     buildMessages(session, { userText }) {
-      const { plan, runner, injuries, lastWorkout, mode, profile } = session.coachState;
+      const { plan, runner, injuries, lastWorkout, mode, profile, weekPlan } = session.coachState;
       if (mode === "interview") {
         const messages = [
           { role: "system", content: `${INTERVIEW_PROMPT}\n${PAIN_RULES}` },
@@ -495,9 +540,10 @@ function createCoach({
         return messages;
       }
       const messages = [
-        { role: "system", content: SYSTEM_PROMPT },
-        ...(lastWorkout && !plan ? [{ role: "system", content: lastWorkoutContext(lastWorkout) }] : []),
+        { role: "system", content: weekPlan ? WEEK_PROMPT : SYSTEM_PROMPT },
+        ...(lastWorkout && !plan && !weekPlan ? [{ role: "system", content: lastWorkoutContext(lastWorkout) }] : []),
         ...(injuries.length ? [{ role: "system", content: injuryContext(injuries) }] : []),
+        ...(weekPlan && !plan ? [{ role: "system", content: weekContext(weekPlan, weekdayOf()) }] : []),
         ...(plan ? [{ role: "system", content: planContext(plan, runner.progress) }] : []),
         ...session.history,
       ];
@@ -540,6 +586,31 @@ function createCoach({
           state.recovery = recoveryFor(profile, state.history, { catalog, focusOf });
           state.profileToConfirm = true;
           engine.record(session, "workout.profile", { profile });
+        },
+      },
+      {
+        pattern: /\[TODAY([^\]]*)\]/g,
+        handle(session, [, fields = ""]) {
+          const state = session.coachState;
+          if (!state.weekPlan || state.plan) return;
+          const weekday = (fields.match(/day=(\w+)/) || [])[1];
+          const minutes = Number((fields.match(/minutes=(\d+)/) || [])[1]) || null;
+          state.todayAfterTurn = {
+            weekday: WEEKDAYS.includes(weekday) ? weekday : null,
+            minutes: minutes ? Math.min(180, Math.max(10, minutes)) : null,
+          };
+        },
+      },
+      {
+        pattern: /\[NEW_PLAN\]/g,
+        handle(session) {
+          const state = session.coachState;
+          // Not in the middle of a workout: the plan in progress would be lost.
+          if (state.runner && !["ready", "done"].includes(state.runner.progress.phase)) {
+            engine.record(session, "week.new_plan_rejected", { phase: state.runner.progress.phase });
+            return;
+          }
+          state.newPlanAfterTurn = true;
         },
       },
       {
@@ -591,8 +662,19 @@ function createCoach({
         state.pendingWeekProfile = null;
         if (!yesIntent(userText)) return undefined;
         buildWeek(session, profile);
-        engine.speakText(session, describeWeek(state.weekPlan));
+        const { day, planned } = dayFor(state.weekPlan, weekdayOf());
+        engine.speakText(session, `${describeWeek(state.weekPlan)} ${planned
+          ? "Zaczynamy dzisiejszy trening?"
+          : `Dziś nie masz treningu w planie, najbliższy jest ${WEEKDAY_NAMES[day.weekday]}. Zrobimy go dziś?`}`);
         return { handled: true };
+      }
+      // Right after the weekly plan: "tak" starts today's day without the model.
+      if (state.offerToday && !state.plan) {
+        state.offerToday = false;
+        if (yesIntent(userText) || READY_WORDS.test(normalizeWords(userText).join(" "))) {
+          startToday(session);
+          return { handled: true };
+        }
       }
       if (state.pendingProfile && !state.plan) {
         if (yesIntent(userText)) {
@@ -682,6 +764,20 @@ function createCoach({
         const result = state.advanceAfterTurn;
         state.advanceAfterTurn = false;
         state.runner.advance(result);
+        return;
+      }
+      if (state.todayAfterTurn) {
+        const today = state.todayAfterTurn;
+        state.todayAfterTurn = null;
+        startToday(session, today);
+        return;
+      }
+      if (state.newPlanAfterTurn) {
+        state.newPlanAfterTurn = false;
+        state.runner?.stop();
+        state.plan = null;
+        state.runner = null;
+        startInterview(session);
         return;
       }
       if (state.profileToConfirm) {
