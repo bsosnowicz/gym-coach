@@ -14,6 +14,7 @@ loadEnvFile();
 const {
   HttpError,
   applySecurityHeaders,
+  enableCamera,
   createFixedWindowRateLimiter,
   readJsonBody,
   readRawBody,
@@ -39,6 +40,10 @@ const USAGE_LOG_DELAY_MS = 10000;
 // A proxy (nginx) drops a stream silent for 60 s; the stream is quiet during
 // a break or the end window, and events sent while the browser reconnects are lost.
 const SSE_HEARTBEAT_MS = 20000;
+// Optional camera module: empty = no camera, the app is the conversation alone.
+// The browser connects to YOLO itself; this server only passes the address on.
+const YOLO_POSE_WS_URL = (process.env.YOLO_POSE_WS_URL || "").trim();
+if (YOLO_POSE_WS_URL) enableCamera(YOLO_POSE_WS_URL);
 
 // Break and end of the session (voice and buttons) wrap the app's coach;
 // texts can be passed here to fit the app ("trening", "lekcja").
@@ -120,6 +125,11 @@ function closeAbandonedSession(session) {
 }
 
 const ROUTES = {
+  // What the page needs before a session; camera: null keeps the camera module unloaded.
+  "GET /api/config": async (_req, res) => {
+    sendJson(res, 200, { camera: YOLO_POSE_WS_URL ? { yoloUrl: YOLO_POSE_WS_URL } : null });
+  },
+
   "POST /api/session/start": async (_req, res, user) => {
     sessionStartRateLimit(user.id);
     const usageAtStart = usageSnapshot();

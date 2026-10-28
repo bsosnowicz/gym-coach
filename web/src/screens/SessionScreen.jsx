@@ -12,7 +12,8 @@ import { VoiceCheck } from "../components/VoiceCheck.jsx";
 import { useSession } from "../session/useSession.js";
 
 // texts: overrides of session/texts.js; onEvent(data): the app's own SSE stages.
-export function SessionScreen({ texts, onEvent }) {
+// children(session): the app's own parts below the controls (e.g. a camera panel).
+export function SessionScreen({ texts, onEvent, children }) {
   const videoRef = useRef(null);
   const session = useSession(videoRef, { texts, onEvent });
   const t = session.texts;
@@ -26,6 +27,7 @@ export function SessionScreen({ texts, onEvent }) {
         </AvatarStage>
         <SessionControls session={session} onStart={() => setChecking(true)} />
         <p className="hint">{t.voiceHint}</p>
+        {children?.(session)}
         <Transcript items={session.transcript} />
         <DevLog title={t.devLog} />
       </main>

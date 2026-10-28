@@ -37,8 +37,24 @@ class HttpError extends Error {
   }
 }
 
+// The optional camera module (YOLO_POSE_WS_URL): the page may open the camera
+// and stream frames to the YOLO service, which usually runs on its own port.
+// Without it the camera stays blocked, as in the template.
+let cameraHeaders = null;
+
+function enableCamera(yoloUrl) {
+  const url = new URL(yoloUrl, "http://localhost");
+  // A relative address ("/yolo/ws/analyze") is the page's own host: 'self' covers it.
+  const yoloSource = /^wss?:\/\//i.test(yoloUrl) ? ` ${url.protocol}//${url.host}` : "";
+  cameraHeaders = {
+    "Content-Security-Policy": SECURITY_HEADERS["Content-Security-Policy"]
+      .replace(`connect-src ${CONNECT_SRC}`, `connect-src ${CONNECT_SRC}${yoloSource}`),
+    "Permissions-Policy": SECURITY_HEADERS["Permissions-Policy"].replace("camera=()", "camera=(self)"),
+  };
+}
+
 function applySecurityHeaders(res) {
-  for (const [name, value] of Object.entries(SECURITY_HEADERS)) res.setHeader(name, value);
+  for (const [name, value] of Object.entries({ ...SECURITY_HEADERS, ...cameraHeaders })) res.setHeader(name, value);
 }
 
 function sendJson(res, status, data) {
@@ -142,6 +158,7 @@ module.exports = {
   MAX_JSON_BODY_BYTES,
   SECURITY_HEADERS,
   applySecurityHeaders,
+  enableCamera,
   createFixedWindowRateLimiter,
   readJsonBody,
   readRawBody,
