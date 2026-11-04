@@ -1,0 +1,118 @@
+/* From language-coach until Gym Coach has its own: the coach's mascots (designed in Claude Design). A fixed palette, one animation contract for all of them.
+   State: .is-idle | .is-speaking | .is-listening | .is-thinking | .is-happy | .is-paused on an ancestor.
+   Mouth: --level 0-1 on an ancestor (only in .is-speaking). Entrance: the .m-enter class. */
+@property --level { syntax: '<number>'; inherits: true; initial-value: 0; }
+
+.mascot {
+  --m-body: #FF6A3D; --m-soft: #FFE6DA; --m-clay: #F7C6B1; --m-cream: #FFF8F3;
+  --m-ink: #1D2340; --m-ink-2: #5B6380; --m-face: #FFFFFF;
+  display: block; width: 100%; height: auto; overflow: visible;
+}
+.mascot * { transform-box: fill-box; stroke-linecap: round; stroke-linejoin: round; }
+
+.mascot .f-body { fill: var(--m-body); }  .mascot .f-soft { fill: var(--m-soft); }
+.mascot .f-clay { fill: var(--m-clay); }  .mascot .f-ink  { fill: var(--m-ink); }
+.mascot .f-ink2 { fill: var(--m-ink-2); } .mascot .f-face { fill: var(--m-face); }
+.mascot .ln { fill: none; }
+.mascot .st-ink  { stroke: var(--m-ink); }   .mascot .st-ink2 { stroke: var(--m-ink-2); }
+.mascot .st-body { stroke: var(--m-body); }  .mascot .st-clay { stroke: var(--m-clay); }
+.mascot .st-face { stroke: var(--m-face); }  .mascot .st-grille { stroke: var(--m-face); stroke-opacity: .35; }
+.mascot .w2 { stroke-width: 2; } .mascot .w3 { stroke-width: 3; } .mascot .w4 { stroke-width: 4; }
+.mascot .w5 { stroke-width: 5; } .mascot .w6 { stroke-width: 6; } .mascot .w7 { stroke-width: 7; }
+.mascot .w8 { stroke-width: 8; } .mascot .w14 { stroke-width: 14; }
+.mascot .m-shadow { fill: var(--m-ink); opacity: .12; transform-origin: 50% 50%; }
+
+/* animated parts — positioned by coordinates only, never by a transform="" attribute */
+.mascot .m-tilt   { transform-origin: 50% 100%; transition: transform .35s cubic-bezier(.3, 1.4, .5, 1); }
+.mascot .m-body   { transform-origin: 50% 100%; animation: m-breathe 4.2s ease-in-out infinite; }
+.mascot .m-eyes   { transform-origin: 50% 50%; animation: m-blink 5.5s infinite; transition: opacity .2s; }
+.mascot .m-look   { animation: m-look 11s ease-in-out infinite; transition: transform .3s ease; }
+.mascot .m-brows  { transform-origin: 50% 50%; transition: transform .3s ease; }
+.mascot .m-lips   { transform-origin: 50% 50%; transition: transform .3s ease; }
+.mascot .m-mouth  { transform-origin: 50% 50%; transform: scaleY(var(--level, 0)); transition: transform 70ms linear; }
+.mascot .m-arm-r  { transform-origin: 6% 6%; transition: transform .4s cubic-bezier(.3, 1.4, .5, 1); }
+.mascot .m-spin   { animation: m-spin 9s ease-in-out infinite alternate; }
+.mascot .m-led    { fill: var(--m-soft); transition: fill .2s; }
+.mascot .m-glint  { opacity: 0; }
+.mascot :is(.m-eyes-closed, .m-eyes-happy, .m-cup, .m-listen, .m-think, .m-cheer) { opacity: 0; transition: opacity .25s; }
+.mascot .m-star   { transform-origin: 50% 50%; }
+.mascot .m-dot    { transform-origin: 50% 50%; }
+
+@keyframes m-breathe { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(1.012, 1.03); } }
+@keyframes m-blink   { 0%, 91%, 97%, 100% { transform: scaleY(1); } 94% { transform: scaleY(.1); } }
+@keyframes m-look    { 0%, 36%, 72%, 100% { transform: translate(0, 0); } 42%, 52% { transform: translate(-4px, 0); }
+                       57%, 66% { transform: translate(4px, 1px); } }
+@keyframes m-spin    { from { transform: translateX(-3px); } to { transform: translateX(3px); } }
+@keyframes m-steam   { 0% { opacity: 0; transform: translateY(4px); } 40% { opacity: 1; } 100% { opacity: 0; transform: translateY(-6px); } }
+@keyframes m-pulse   { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+@keyframes m-dot     { 0%, 60%, 100% { transform: translateY(0); opacity: .45; } 30% { transform: translateY(-4px); opacity: 1; } }
+@keyframes m-hop     { 0%, 100% { transform: translateY(0) scale(1, 1); } 12% { transform: translateY(0) scale(1.06, .92); }
+                       40% { transform: translateY(-14px) scale(.97, 1.04); } 70% { transform: translateY(0) scale(1.04, .95); } 85% { transform: translateY(0) scale(1, 1); } }
+@keyframes m-hop-shadow { 0%, 100%, 12%, 70% { transform: scale(1); opacity: .12; } 40% { transform: scale(.75); opacity: .07; } }
+@keyframes m-twinkle { 0%, 100% { transform: scale(.4) rotate(0deg); opacity: 0; } 30%, 60% { transform: scale(1) rotate(45deg); opacity: 1; } }
+@keyframes m-wave    { 0%, 100% { transform: rotate(-100deg); } 50% { transform: rotate(-130deg); } }
+@keyframes m-glint   { 0%, 82%, 100% { opacity: 0; transform: translate(0, 0); } 88% { opacity: 1; } 94% { opacity: 0; transform: translate(14px, 0); } }
+@keyframes m-enter   { 0% { transform: translateY(-36px) scale(.7); opacity: 0; } 60% { transform: translateY(4px) scale(1.04, .96); opacity: 1; }
+                       100% { transform: translateY(0) scale(1); opacity: 1; } }
+
+.mascot .m-glint { animation: m-glint 7s ease-in-out infinite; }
+
+/* ── states ────────────────────────────────────────────── */
+:is(.is-idle, .is-listening, .is-thinking, .is-paused) .mascot .m-mouth { transform: scaleY(0); }
+
+/* speaking: the mouth from --level, a slight nod and brows with the voice */
+.is-speaking .mascot .m-tilt  { transform: translateY(calc(var(--level, 0) * -3px)) rotate(calc(var(--level, 0) * -1.5deg)); transition: transform 90ms linear; }
+.is-speaking .mascot .m-brows { transform: translateY(calc(var(--level, 0) * -3px)); }
+.is-speaking .mascot .m-look  { animation: none; }
+.is-speaking .mascot .m-led   { fill: var(--m-body); }
+
+/* listening: head tilted, brows raised, sound waves */
+.is-listening .mascot .m-tilt   { transform: rotate(-6deg); }
+.is-listening .mascot .m-brows  { transform: translateY(-5px); }
+.is-listening .mascot .m-look   { animation: none; transform: translate(2px, 0); }
+.is-listening .mascot .m-listen { opacity: 1; }
+.is-listening .mascot .m-listen path { animation: m-pulse 1.4s ease-in-out infinite; }
+.is-listening .mascot .m-listen .m-listen-2 { animation-delay: .25s; }
+.is-listening .mascot .m-led { fill: var(--m-ink-2); }
+
+/* thinking: eyes up, a "hmm" mouth, a bubble with dots (waiting for the model) */
+.is-thinking .mascot .m-look  { animation: none; transform: translate(3px, -3px); }
+.is-thinking .mascot .m-brows { transform: translateY(-3px); }
+.is-thinking .mascot .m-lips  { transform: translateX(3px) scaleX(.7); }
+.is-thinking .mascot .m-tilt  { transform: rotate(3deg); }
+.is-thinking .mascot .m-think { opacity: 1; }
+.is-thinking .mascot .m-dot   { animation: m-dot 1.2s ease-in-out infinite; }
+.is-thinking .mascot .m-dot-2 { animation-delay: .15s; }
+.is-thinking .mascot .m-dot-3 { animation-delay: .3s; }
+
+/* happy: a hop, arched eyes, stars, a wave (a good answer, a finished lesson) */
+.is-happy .mascot .m-tilt   { animation: m-hop .9s ease-in-out infinite; }
+.is-happy .mascot .m-shadow { animation: m-hop-shadow .9s ease-in-out infinite; }
+.is-happy .mascot .m-eyes   { opacity: 0; animation: none; }
+.is-happy .mascot .m-eyes-happy { opacity: 1; }
+.is-happy .mascot .m-mouth  { transform: scaleY(.8); }
+.is-happy .mascot .m-brows  { transform: translateY(-4px); }
+.is-happy .mascot .m-cheer  { opacity: 1; }
+.is-happy .mascot .m-star   { animation: m-twinkle 1.6s ease-in-out infinite; }
+.is-happy .mascot .m-star-2 { animation-delay: .4s; }
+.is-happy .mascot .m-star-3 { animation-delay: .8s; }
+.is-happy .mascot .m-star-4 { animation-delay: 1.2s; }
+.is-happy .mascot .m-arm-r  { animation: m-wave .5s ease-in-out infinite; }
+
+/* paused: eyes closed, a cup of tea, slower breathing */
+.is-paused .mascot .m-body  { animation-duration: 7s; }
+.is-paused .mascot .m-eyes  { opacity: 0; animation: none; }
+.is-paused .mascot :is(.m-eyes-closed, .m-cup) { opacity: 1; }
+.is-paused .mascot .m-steam { animation: m-steam 2.4s ease-out infinite; }
+.is-paused .mascot .m-steam-2 { animation-delay: 1.2s; }
+.is-paused .mascot .m-arm-r { transform: rotate(-20deg); }
+
+/* the entrance after mounting (mountMascot adds and removes .m-enter) */
+.m-enter .mascot .m-tilt { animation: m-enter .7s cubic-bezier(.3, 1.4, .5, 1) backwards; }
+
+@media (prefers-reduced-motion: reduce) {
+  .mascot *, .m-enter .mascot .m-tilt { animation: none !important; }
+  .mascot :is(.m-tilt, .m-brows, .m-eyes, .m-look, .m-arm-r, .m-lips) { transition: none !important; }
+  .is-happy .mascot .m-star { opacity: 1; }
+  .is-thinking .mascot .m-dot { opacity: 1; }
+}

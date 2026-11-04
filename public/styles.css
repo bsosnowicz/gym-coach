@@ -65,6 +65,18 @@ body {
   font-size: 14px;
 }
 
+/* Voice mode (COACH_AVATAR=voice): no video, the coach's mascot on a drawn stage
+   (css/mascot.css, css/scene.css) in its place, under the status line and the overlays. */
+.stage > .voice-stage { position: absolute; inset: 0; }
+.voice-stage[hidden] { display: none; }
+/* Speech on the stage, as tuned in language-coach (mascot.css stays as designed): the closed
+   lips go once the mouth opens, the mouth opens downwards like a jaw and swaps shapes at once,
+   the nod follows the shapes softly instead of jerking with every frame of the voice. */
+.lesson-stage.is-speaking .mascot .m-lips { opacity: calc(1 - var(--level, 0) * 10); }
+.lesson-stage.is-happy .mascot .m-lips { opacity: 0; }
+.lesson-stage .mascot .m-mouth { transform-origin: 50% 0%; transition: none; }
+.lesson-stage.is-speaking .mascot .m-tilt { transition: transform .25s ease-out; }
+
 .overlay {
   position: absolute;
   inset: 0;

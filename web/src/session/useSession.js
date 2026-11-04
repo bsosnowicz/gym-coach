@@ -28,6 +28,9 @@ export function useSession(videoRef, { texts = {}, onEvent } = {}) {
   // The goodbye is being said after "Tak, kończymy".
   const [finishing, setFinishing] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
+  // Voice mode (COACH_AVATAR=voice): no video, the coach's mascot on a drawn stage.
+  const [voiceOnly, setVoiceOnly] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
   const transcriptId = useRef(0);
   const closing = useRef(false);
 
@@ -37,6 +40,7 @@ export function useSession(videoRef, { texts = {}, onEvent } = {}) {
     setMicMuted(false);
     setMicBlocked(null);
     setReconnecting(false);
+    setSpeaking(false);
     setStatus(statusText);
   }
 
@@ -52,7 +56,10 @@ export function useSession(videoRef, { texts = {}, onEvent } = {}) {
         transcriptId.current += 1;
         setTranscript((items) => [...items, { id: transcriptId.current, speaker, text }]);
       },
-      onVoice: (speaking) => { if (!adapterRef.current?.reconnecting) setStatus(speaking ? texts().speaking : texts().listening); },
+      onVoice: (speaking) => {
+        setSpeaking(speaking);
+        if (!adapterRef.current?.reconnecting) setStatus(speaking ? texts().speaking : texts().listening);
+      },
       onHandover: (active, state = {}) => {
         setReconnecting(active);
         setStatus(active ? texts().reconnecting : state.paused ? texts().paused : texts().listening);
@@ -100,7 +107,8 @@ export function useSession(videoRef, { texts = {}, onEvent } = {}) {
     setTranscript([]);
     setStatus(TEXTS.connecting);
     try {
-      await adapter.connect(videoRef.current, setup);
+      const started = await adapter.connect(videoRef.current, setup);
+      setVoiceOnly(started?.mode === "voice");
       setPhase("running");
       setStatus(TEXTS.greeting);
     } catch (error) {
@@ -139,7 +147,11 @@ export function useSession(videoRef, { texts = {}, onEvent } = {}) {
 
   return {
     phase, running: phase === "running", status, transcript, hold, micMuted, micBlocked, finishing, reconnecting, texts: TEXTS,
+    voiceOnly, speaking,
     floor: floorRef.current, sessionId: () => adapter.sessionId,
+    // The adapter's own functions: the same every render, so the mascot's frame loop is not restarted.
+    voiceLevel: adapter.voiceLevel,
+    voiceMouth: adapter.voiceMouth,
     start, pause, askEnd, continueSession, finish, toggleMic, resumeMic,
   };
 }
