@@ -27,6 +27,7 @@ Repo: `bsosnowicz/gym-coach`, katalog `~/projects/gym-coach`.
 - `web/src/` — strona React: `session/useSession.js` (sesja bez wyglądu, `start(setup)`, `onEvent` na własne zdarzenia SSE), `session/texts.js` (wszystkie napisy), `components/` (scena z wideo, nakładka przerwy, okno zakończenia, przyciski, transkrypcja, dziennik), `screens/SessionScreen.jsx` (złożona strona).
 - `public/camera/` + `web/src/camera/CameraPanel.jsx` — opcjonalna kamera (etap 03): strumień do YOLO, szkielet, pętla korekty; `src/coach/cues.js` — trasa korekty i bramka; `yolo-backend/` — serwis Python ze scenariuszami.
 - `public/` — moduły przeglądarki bez Reacta, wspólne z language-coach: `session/lite-adapter.js` (LiveKit, SSE, mikrofon), `stt.js`, `api.js`, `ui/log.js`, `styles.css`.
+- Tryb bez awatara (`COACH_AVATAR=voice`, z language-coach): `src/adapters/avatar/browser-voice.js`, `public/session/{voice-player,voice-level,visemes}.js`, maskotka i tła `public/ui/{mascots,scenes}.js` + `public/css/{mascot,scene}.css` (tymczasowo z language-coach, docelowo z Claude Design), `web/src/components/Mascot.jsx` (`CoachStage`), stan maskotki w `SessionScreen.jsx`.
 
 ## Zasady współpracy z użytkownikiem
 

@@ -32,6 +32,26 @@ npm run dev:web
 
 Vite działa na http://localhost:5174/app/ i przekazuje `/api` do serwera na 3001.
 
+### Tryb bez awatara (`COACH_AVATAR=voice`)
+
+Z `COACH_AVATAR=voice` w `.env` (i restartem serwera) trener nie ma wideo LiveAvatar:
+jego głos gra przeglądarka, a w miejscu wideo stoi rysowana maskotka na scenie.
+Klucz `LIVEAVATAR_API_KEY` nie jest wtedy potrzebny; nie ma limitu czasu ani jednej sesji
+naraz z sandboxu, a minuta wychodzi ok. 3× taniej. Przy starcie serwer pisze, który tryb działa.
+
+- Serwer (`src/adapters/avatar/browser-voice.js`) wysyła dźwięk w zdarzeniach SSE
+  kawałkami po 250 ms (`audio`, `audio_stop` przy przerwaniu); „zaczął/skończył mówić” liczy
+  zegar: długość wysłanego dźwięku + 300 ms. Podmiana awatara przed limitem się nie włącza.
+- Strona gra kawałki przez Web Audio (`public/session/voice-player.js`). Usta maskotki
+  układają się według liter mówionych w danej chwili (czasy liter przychodzą od ElevenLabs
+  razem z dźwiękiem, `public/session/visemes.js`), a bez nich według głośności
+  (`public/session/voice-level.js`).
+- Stan maskotki: przerwa, radość przez 2 s po skończonej serii i treningu, mówi, myśli
+  (użytkownik mówił ostatni), słucha (mikrofon włączony), spoczynek.
+- Maskotki i tła (`public/ui/mascots.js`, `public/ui/scenes.js`, `public/css/mascot.css`,
+  `public/css/scene.css`) są tymczasowo z language-coach, do czasu własnych z Claude Design;
+  kontrakt animacji opisuje nagłówek `mascot.css`.
+
 ## Trening głosem
 
 1. **Wywiad.** Trener pyta o cel, poziom, sprzęt i czas. Gdy zna odpowiedzi, model pisze
@@ -176,6 +196,11 @@ w `src/coach/cues.js`. Etap 03 dotknął też plików wspólnych z szablonem:
 `src/http/http-security.js` (`enableCamera`), `public/session/lite-adapter.js` (getter
 `sessionId`), `web/src/session/useSession.js` (`floor`, `sessionId`) i
 `web/src/screens/SessionScreen.jsx` (`children(session)`); `src/engine/` bez zmian.
+
+Tryb bez awatara przyszedł z language-coach (commity „Voice mode” z 2026-11-03) i zmienia
+silnik: `send()` w `avatar.start` (`session.js`) oraz czasy liter w `onAudio` i `push`
+(`turn.js`, `ports.js`, adapter ElevenLabs). W `avatar-template` tych zmian jeszcze nie ma:
+szablon ma niezacommitowane 02e/02g, więc trafią tam po ich commicie.
 
 Konfiguracja API, podmiana wygasającej sesji awatara, hooki `onPause` / `onResume`
 i szczegóły silnika: [dokumentacja szablonu](docs/AVATAR_TEMPLATE.md).
