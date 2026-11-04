@@ -19,8 +19,8 @@ function fakeLlm(...deltas) {
   };
 }
 
-// audio: true answers every utterance with one PCM chunk; false stays silent and fails.
-function fakeTts({ fail = null } = {}) {
+// Answers every utterance with one PCM chunk (with letters, if given); fail: the error instead.
+function fakeTts({ fail = null, letters = null } = {}) {
   const sent = [];
   return {
     sent,
@@ -40,7 +40,7 @@ function fakeTts({ fail = null } = {}) {
             sendText: (text) => sent.push(text),
             end() {
               if (fail) return;
-              queueMicrotask(() => { onAudio(Buffer.alloc(48000)); settle.resolve(); });
+              queueMicrotask(() => { onAudio(Buffer.alloc(48000), letters); settle.resolve(); });
             },
             cancel() {},
           };
@@ -55,15 +55,18 @@ function fakeTts({ fail = null } = {}) {
 
 function fakeAvatar() {
   const commands = [];
+  // What the speech got: bytes and the letters that came with them.
+  const pushed = [];
   return {
     commands,
+    pushed,
     async start({ onSpeakStarted, onSpeakEnded }) {
       return {
         sessionId: `test-${Date.now()}-${Math.random()}`,
         client: { livekitUrl: "wss://livekit.invalid", livekitToken: "token" },
         beginSpeech() {
           return {
-            push() { commands.push("speak"); },
+            push(pcm, letters) { commands.push("speak"); pushed.push({ bytes: pcm.length, letters: letters ?? null }); },
             end() { commands.push("speak_end"); queueMicrotask(() => { onSpeakStarted(); onSpeakEnded(); }); },
           };
         },

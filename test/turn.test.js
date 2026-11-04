@@ -7,7 +7,8 @@ const { isLoneCourtesy } = require("../src/engine/words");
 const { endSession } = require("../src/engine/session");
 const { providerFailure, PROVIDER_MESSAGES } = require("../src/engine/provider-failure");
 const { createLlm } = require("../src/adapters/llm/chat-completions");
-const { fakeLlm, fakeTts, fakeCoach, liveSession, tick } = require("./helpers");
+const { createBrowserVoice, END_MARGIN_MS } = require("../src/adapters/avatar/browser-voice");
+const { fakeLlm, fakeTts, fakeCoach, liveSession, tick, fakeTime } = require("./helpers");
 
 test("udana tura: zdania idą do TTS, znaczniki są wycinane, historia i blokada są spójne", async () => {
   const seen = [];
@@ -32,6 +33,15 @@ test("udana tura: zdania idą do TTS, znaczniki są wycinane, historia i blokada
   assert.deepEqual(seen, ["switch", { userText: "Zamieńmy kierunek.", reply: "Dobrze. Teraz zmiana kierunku." }]);
   assert.ok(events.some((event) => event.stage === "avatar_transcription"));
   assert.equal(avatar.commands.at(-1), "start_listening");
+  await endSession(session);
+});
+
+test("litery z TTS idą do awatara razem z tym samym audio, którego dotyczą", async () => {
+  const letters = { chars: "Dobrze.", ms: [0, 60, 120, 180, 240, 300, 360] };
+  const { session, avatar } = await liveSession({ llm: fakeLlm("Dobrze."), tts: fakeTts({ letters }) });
+  await runTurn(session, "Hej.");
+  await tick();
+  assert.deepEqual(avatar.pushed, [{ bytes: 48000, letters }]);
   await endSession(session);
 });
 
@@ -388,6 +398,37 @@ test("pauza bez rozstrzygnięcia kończy się jak zwykłe przerwanie", async () 
   interruptTurn(session);
   await turn;
   assert.ok(events.some((event) => event.stage === "interrupted"));
+  assert.equal(session.turnInFlight, false);
+  await endSession(session);
+});
+
+test("tryb głosowy: pauza czyści dźwięk na stronie, wznowienie wysyła resztę, koniec liczy zegar", async () => {
+  const rig = manualRig();
+  const clock = fakeTime();
+  const { session, events } = await liveSession({ llm: fakeLlm("Jedno zdanie."), tts: rig.tts, avatar: createBrowserVoice(clock) });
+  const audioBytes = (list) => list.filter((event) => event.stage === "audio").reduce((sum, event) => sum + Buffer.from(event.pcm, "base64").length, 0);
+  const turn = runTurn(session, "Opowiedz coś.");
+  await rig.untilTtsEnded(1);
+  rig.onAudio(loudPcm(2000));
+  assert.ok(events.some((event) => event.stage === "avatar_speak_started"));
+
+  assert.deepEqual(interruptTurn(session), { ok: true, held: true });
+  const stopAt = events.findIndex((event) => event.stage === "audio_stop");
+  assert.ok(stopAt > 0);
+  rig.onAudio(loudPcm(1000));
+  rig.finishTts();
+  await tick();
+  assert.equal(audioBytes(events.slice(stopAt)), 0, "nothing plays while the reply is held");
+
+  assert.deepEqual(resumeTurn(session), { ok: true, resumed: true });
+  while (!events.some((event) => event.stage === "resumed")) await tick();
+  assert.equal(audioBytes(events.slice(stopAt)), loudPcm(3000).length);
+  assert.equal(session.turnInFlight, true);
+  clock.advance(3000 + END_MARGIN_MS);
+  await turn;
+
+  assert.ok(!events.some((event) => event.stage === "interrupted"));
+  assert.equal(session.history.at(-1).content, "Jedno zdanie.");
   assert.equal(session.turnInFlight, false);
   await endSession(session);
 });

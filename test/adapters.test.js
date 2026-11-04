@@ -168,6 +168,32 @@ test("TTS składa audio z kontekstu wypowiedzi i wymusza język w adresie połą
   assert.match(url, /\/voice-1\/multi-stream-input\?.*language_code=en/);
 });
 
+test("TTS podaje czasy liter od początku kawałka audio, choć ElevenLabs liczy je od początku kontekstu", async () => {
+  const tts = createElevenLabsTts({
+    apiKey: "key",
+    WebSocketImpl: fakeSocketClass((socket, message) => {
+      if (!message.flush) return;
+      const reply = (payload) => socket.onmessage({ data: JSON.stringify({ contextId: message.context_id, ...payload }) });
+      const audio = Buffer.alloc(4800).toString("base64"); // 100 ms
+      queueMicrotask(() => {
+        // The first chunk's letters run past its audio (to 150 ms); the next ones start again at 0.
+        reply({ audio, alignment: { chars: ["a", "b"], charStartTimesMs: [0, 60], charDurationsMs: [60, 90] } });
+        reply({ audio, alignment: { chars: ["c"], charStartTimesMs: [0], charDurationsMs: [50] } });
+        reply({ audio: "", isFinal: true });
+      });
+    }),
+  });
+  const connection = await tts.open({ voiceId: "voice-1" });
+  const letters = [];
+  const speech = connection.startUtterance({ onAudio: (_pcm, chunkLetters) => letters.push(chunkLetters) });
+  speech.sendText("abc");
+  speech.end();
+  await speech.finished;
+  // "c" is said at 150 ms of the context: 50 ms into the second chunk.
+  assert.deepEqual(letters, [{ chars: "ab", ms: [0, 60] }, { chars: "c", ms: [50] }]);
+  connection.close();
+});
+
 test("TTS czyta fragmenty w «» w osobnych kontekstach, po kolei, a samą interpunkcję pomija", async () => {
   const texts = new Map();
   const tts = createElevenLabsTts({

@@ -28,7 +28,7 @@
  * @typedef {object} TtsConnection
  * @property {string} key
  * @property {() => boolean} isOpen
- * @property {(args: { onAudio: (pcm: Buffer) => void, signal?: AbortSignal }) => TtsUtterance} startUtterance
+ * @property {(args: { onAudio: (pcm: Buffer, letters?: Letters | null) => void, signal?: AbortSignal }) => TtsUtterance} startUtterance
  * @property {() => void} close
  *
  * @typedef {object} TtsPort
@@ -44,8 +44,12 @@
  */
 
 /**
+ * @typedef {object} Letters When each letter of a chunk's text is said.
+ * @property {string} chars
+ * @property {number[]} ms From the start of the chunk the letters came with; may run past its end.
+ *
  * @typedef {object} AvatarSpeech
- * @property {(pcm: Buffer) => void} push
+ * @property {(pcm: Buffer, letters?: Letters | null) => void} push letters: only an avatar the page draws uses them.
  * @property {() => void} end
  *
  * @typedef {object} AvatarHandle

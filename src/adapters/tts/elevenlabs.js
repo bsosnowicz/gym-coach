@@ -14,6 +14,7 @@ const OPEN_TIMEOUT_MS = 10000;
 // "isFinal" is sometimes lost; this long without audio after all text was sent counts as done.
 const QUIET_MS = 2000;
 const SYNTHESIZE_TIMEOUT_MS = 20000;
+const BYTES_PER_MS = 48; // PCM16 mono @ 24 kHz
 
 // A refusal as the server log shows it. A used-up quota or a rejected key is
 // a matter of the account, not an outage: retrying will not help, so it says so.
@@ -73,6 +74,24 @@ function createElevenLabsTts({
     const finished = new Promise((resolve, reject) => { settle = { resolve, reject }; });
     finished.catch(() => {});
 
+    // When each letter is said, for the mascot's mouth in voice mode. ElevenLabs
+    // counts these times from the start of the context, not of the audio chunk
+    // they come with (measured in language-coach 3.11.2026: a chunk of 1340 ms
+    // of audio carried letters up to 1858 ms, the next one started again at 0).
+    // Returned as ms from the start of this chunk.
+    let lettersUntilMs = 0;
+    let audioUntilMs = 0;
+    const lettersOf = (alignment, pcm) => {
+      const chunkStartMs = audioUntilMs;
+      audioUntilMs += pcm.length / BYTES_PER_MS;
+      const chars = alignment?.chars;
+      if (!chars?.length) return null;
+      const from = lettersUntilMs;
+      const last = chars.length - 1;
+      lettersUntilMs += alignment.charStartTimesMs[last] + alignment.charDurationsMs[last];
+      return { chars: chars.join(""), ms: alignment.charStartTimesMs.map((at) => Math.round(from + at - chunkStartMs)) };
+    };
+
     let contextClosed = false;
     const closeContext = () => {
       if (contextClosed) return;
@@ -111,7 +130,8 @@ function createElevenLabsTts({
       if (reported) { fail(reported); return; }
       if (parsed.audio) {
         gotAudio = true;
-        onAudio(Buffer.from(parsed.audio, "base64"));
+        const pcm = Buffer.from(parsed.audio, "base64");
+        onAudio(pcm, lettersOf(parsed.alignment, pcm));
         scheduleQuietCheck();
       }
       if (parsed.isFinal) finish();

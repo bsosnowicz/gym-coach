@@ -233,10 +233,12 @@ async function executeTurn(session, userText, isRetry) {
 
     utterance = ttsConnection.startUtterance({
       signal: controller.signal,
-      onAudio: (pcm) => {
+      // letters: when each one is said, for an avatar the page draws (voice mode).
+      // Not kept for a resumed reply: there the mouth follows the loudness.
+      onAudio: (pcm, letters) => {
         if (!firstAudioSeen) { firstAudioSeen = true; mark("tts_first_chunk"); }
         playback.chunks.push(pcm);
-        if (!playback.held) playback.speech.push(pcm);
+        if (!playback.held) playback.speech.push(pcm, letters);
       },
     });
     // A TTS failure mid-stream must also stop the LLM stream.
