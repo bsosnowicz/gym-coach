@@ -98,4 +98,22 @@ async function liveSession({ llm, tts = fakeTts(), avatar = fakeAvatar(), coach 
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 
-module.exports = { sseStream, fakeLlm, fakeTts, fakeAvatar, fakeCoach, liveSession, tick };
+// A clock and timers moved by hand: { now, setTimer, clearTimer } as adapters take them.
+function fakeTime() {
+  let time = 0;
+  const timers = new Map();
+  let nextId = 1;
+  return {
+    now: () => time,
+    setTimer: (fn, ms) => { const id = nextId++; timers.set(id, { fn, at: time + ms }); return id; },
+    clearTimer: (id) => timers.delete(id),
+    advance(ms) {
+      time += ms;
+      for (const [id, timer] of [...timers]) {
+        if (timer.at <= time) { timers.delete(id); timer.fn(); }
+      }
+    },
+  };
+}
+
+module.exports = { sseStream, fakeLlm, fakeTts, fakeAvatar, fakeCoach, liveSession, tick, fakeTime };

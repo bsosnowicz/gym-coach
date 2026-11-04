@@ -62,7 +62,8 @@
  * @property {() => Promise<void>} stop
  *
  * @typedef {object} AvatarPort
- * @property {(args: { onSpeakStarted: () => void, onSpeakEnded: () => void }) => Promise<AvatarHandle>} start
+ * @property {(args: { onSpeakStarted: () => void, onSpeakEnded: () => void, send: (payload: object) => void }) => Promise<AvatarHandle>} start
+ *   send: an event to the page of this session, for an avatar the page itself plays.
  */
 
 /**

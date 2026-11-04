@@ -29,6 +29,7 @@ const { llmConfig } = require("./src/adapters/llm/providers");
 const { createElevenLabsTts } = require("./src/adapters/tts/elevenlabs");
 const { createGroqWhisperStt } = require("./src/adapters/stt/groq-whisper");
 const { createLiveAvatarLite } = require("./src/adapters/avatar/liveavatar-lite");
+const { createBrowserVoice } = require("./src/adapters/avatar/browser-voice");
 const { createCoach, holdPainDuringBreak } = require("./src/coach");
 const { createCueSpeaker } = require("./src/coach/cues");
 const { createInjuryStore } = require("./src/coach/injury-store");
@@ -38,6 +39,8 @@ const { diffUsage, usageLine } = require("./src/usage");
 const HOST = process.env.HOST || "127.0.0.1";
 const PORT = envNumber("PORT", 3001);
 const MAX_AUDIO_BODY_BYTES = 10 * 1024 * 1024;
+// The coach's voice played in the page, without the LiveAvatar face.
+const VOICE_ONLY = process.env.COACH_AVATAR === "voice";
 // Model calls started by the coach may finish after the close.
 const USAGE_LOG_DELAY_MS = 10000;
 // A proxy (nginx) drops a stream silent for 60 s; the stream is quiet during
@@ -96,7 +99,7 @@ function getAdapters() {
       model: process.env.GROQ_STT_MODEL || undefined,
       timeoutMs: envNumber("STT_TIMEOUT_MS", 15000),
     }),
-    avatar: createLiveAvatarLite({
+    avatar: VOICE_ONLY ? createBrowserVoice() : createLiveAvatarLite({
       apiKey: requireEnv("LIVEAVATAR_API_KEY"),
       avatarId: process.env.LIVEAVATAR_AVATAR_ID || null,
       // Sandbox unless explicitly switched off.
@@ -387,6 +390,7 @@ async function shutdownGracefully(signal) {
 if (require.main === module) {
   server.listen(PORT, HOST, () => {
     console.log(`Gym Coach: http://${HOST}:${PORT}`);
+    console.log(`Trener: ${VOICE_ONLY ? "sam głos i maskotka (COACH_AVATAR=voice)" : "awatar LiveAvatar"}`);
     if (!fs.existsSync(APP_ENTRY)) console.warn("Brak zbudowanej strony (public/app): uruchom npm run build:web.");
   });
   for (const signal of ["SIGTERM", "SIGINT"]) {

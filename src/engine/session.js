@@ -128,6 +128,10 @@ async function startSession({ userId, llm, tts, avatar, coach, recorder = create
         session.onSpeakEnded = null;
         done?.();
       },
+      // For an avatar that plays in the page (browser-voice): its audio travels with the events.
+      send: (payload) => {
+        if (!session.closed && generation === avatarGeneration) emit(session, payload);
+      },
     });
   };
   const [avatarResult, ttsResult] = await Promise.allSettled([
