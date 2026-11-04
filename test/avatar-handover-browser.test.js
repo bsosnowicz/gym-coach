@@ -4,8 +4,9 @@ const fs = require("node:fs");
 const { tick } = require("./helpers");
 
 // Run the actual browser adapter with transport and microphone doubles, without a CDN or paid services.
-function browserRig() {
+function browserRig({ mode = null } = {}) {
   const rooms = [];
+  const players = [];
   const acknowledgements = [];
   const ended = [];
   const transitions = [];
@@ -27,7 +28,15 @@ function browserRig() {
   const noop = () => {};
   const deps = {
     Room, RoomEvent, log: noop, logProviderOutput: noop, showAudioUnlock: noop, hideAudioUnlock: noop,
-    startSession: async () => ({ sessionId: "conversation", livekitUrl: "initial", livekitToken: "initial-token" }),
+    startSession: async () => (mode ? { sessionId: "conversation", mode }
+      : { sessionId: "conversation", livekitUrl: "initial", livekitToken: "initial-token" }),
+    createVoicePlayer: () => {
+      const player = { pushed: [], stops: 0, closed: false, blocked: false, track: {},
+        push(pcm, letters) { this.pushed.push([pcm, letters]); }, stop() { this.stops += 1; }, close() { this.closed = true; },
+        level: () => 0.5, mouth: () => 2 };
+      players.push(player);
+      return player;
+    },
     endSession: async (id) => ended.push(id), openEvents: () => source,
     sendTurn: noop, interrupt: noop, resume: noop, pauseSession: noop, askEnd: noop, continueSession: noop,
     finishSession: noop, report: noop, handoverReady: async (...args) => acknowledgements.push(args),
@@ -46,7 +55,7 @@ function browserRig() {
     setAvatarUtterance: noop, isEcho: () => false, turnSent: noop };
   const adapter = create({ floor, onHandover: (...args) => transitions.push(args),
     onDisconnected: () => disconnected++, onTranscript: (...args) => transcripts.push(args) });
-  return { adapter, rooms, acknowledgements, ended, transitions, transcripts, muted, source,
+  return { adapter, rooms, players, acknowledgements, ended, transitions, transcripts, muted, source,
     mic: () => mic, disconnected: () => disconnected, recorderStops: () => recorderStops,
     event: (data) => source.onmessage({ data: JSON.stringify(data) }),
     audio(room) { room.emit("TrackSubscribed", { kind: "audio", attach: noop, detach: noop, mediaStreamTrack: {} }); },
@@ -178,4 +187,31 @@ test("a transcript from before replacement is discarded even if STT returns afte
   r.mic().onUtterance({ text: "stale", silenceAt, sttMs: 1000 });
   assert.deepEqual(r.transcripts, []);
   await r.adapter.disconnect();
+});
+
+test("voice mode: no avatar room, the coach's audio goes to the player in the page", async () => {
+  const rig = browserRig({ mode: "voice" });
+  await rig.adapter.connect({}, {});
+  assert.equal(rig.rooms.length, 0);
+  assert.equal(rig.players.length, 1);
+  const [player] = rig.players;
+  rig.event({ stage: "audio", pcm: "AAAA", letters: { chars: "a", ms: [0] } });
+  rig.event({ stage: "audio_stop" });
+  assert.deepEqual(player.pushed, [["AAAA", { chars: "a", ms: [0] }]]);
+  assert.equal(player.stops, 1);
+  assert.equal(rig.adapter.voiceLevel(), 0.5);
+  assert.equal(rig.adapter.voiceMouth(), 2);
+  await rig.adapter.disconnect();
+  assert.equal(player.closed, true);
+  assert.equal(rig.adapter.voiceLevel(), 0);
+  assert.equal(rig.adapter.voiceMouth(), null);
+});
+
+test("avatar mode: the player made in the click is closed once the session has a room", async () => {
+  const rig = browserRig();
+  await rig.adapter.connect({}, {});
+  assert.equal(rig.rooms.length, 1);
+  assert.equal(rig.players[0].closed, true);
+  rig.event({ stage: "audio", pcm: "AAAA" });
+  assert.deepEqual(rig.players[0].pushed, []);
 });

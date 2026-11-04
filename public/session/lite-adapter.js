@@ -10,6 +10,7 @@ import { createSpeechRecorder, SILENCE_HOLD_MS } from "../stt.js";
 import { resumeBlockedAudio } from "../mic-start.js";
 import { armAvatarOnset, resetAvatarOnset } from "./avatar-onset.js";
 import { createTurnLatencyTracker, turnLatencyBreakdown } from "./turn-latency.js";
+import { createVoicePlayer } from "./voice-player.js";
 
 export function createLiteAdapter({
   floor,
@@ -34,6 +35,8 @@ export function createLiteAdapter({
   onMicUnblocked = () => {},
 }) {
   let room = null;
+  // Voice mode only (COACH_AVATAR=voice): plays the coach in the page instead of the avatar's room.
+  let player = null;
   let videoEl = null;
   let handoverInProgress = false;
   let currentHandoverId = null;
@@ -81,6 +84,9 @@ export function createLiteAdapter({
   }
 
   function handlePipelineEvent(data) {
+    // Voice mode: several per second and mostly base64, so not logged.
+    if (data.stage === "audio") return player?.push(data.pcm, data.letters);
+    if (data.stage === "audio_stop") return player?.stop();
     const { livekitToken, ...details } = data;
     logProviderOutput("pipeline", `SSE ${data.stage}`, details);
     if (data.stage === "avatar_handover_started") startHandover();
@@ -240,6 +246,7 @@ export function createLiteAdapter({
     hideAudioUnlock();
     if (recorder) { recorder.stop(); recorder = null; }
     if (eventSource) { eventSource.close(); eventSource = null; }
+    if (player) { player.close(); player = null; }
   }
 
   function startHandover() {
@@ -358,12 +365,23 @@ export function createLiteAdapter({
       micMuted = false;
       greetingSpoken = false;
       log("Startuję sesję...");
+      // Before the first await: only the click that started the session lets
+      // the page play sound on iOS. The avatar's room does not need it.
+      player?.close();
+      player = createVoicePlayer();
       const session = await startSession(setup);
       if (epoch !== connectionEpoch || disconnectRequested) { await endSession(session.sessionId); return session; }
       sessionId = session.sessionId;
-      log("Sesja OK. Łączę z pokojem LiveKit (tylko wideo, bez publikowania mikrofonu)...");
-
-      if (!await joinRoom(session)) return session;
+      if (session.mode === "voice") {
+        log("Sesja OK. Tryb głosowy: trener mówi przez przeglądarkę, bez awatara.");
+        resetAvatarOnset(player.track);
+        if (player.blocked) showAudioUnlock(() => player.resume());
+      } else {
+        player.close();
+        player = null;
+        log("Sesja OK. Łączę z pokojem LiveKit (tylko wideo, bez publikowania mikrofonu)...");
+        if (!await joinRoom(session)) return session;
+      }
 
       eventSource = openEvents(sessionId);
       eventSource.onmessage = (ev) => {
@@ -422,6 +440,16 @@ export function createLiteAdapter({
     resumeMicAudio() {
       resumeBlockedAudio();
       if (room && !room.canPlaybackAudio) room.startAudio().catch(() => {});
+      if (player?.blocked) player.resume().catch(() => {});
+    },
+
+    // Voice mode: the loudness of the coach's voice now (0-1) and the mouth shape for the
+    // letters being said (an index of MOUTH_OPEN, or null without them). Outside it: 0 and null.
+    voiceLevel() {
+      return player ? player.level() : 0;
+    },
+    voiceMouth() {
+      return player ? player.mouth() : null;
     },
 
     // Whether a session is up, for a Stop that asks before ending.
