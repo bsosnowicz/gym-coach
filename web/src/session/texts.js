@@ -37,7 +37,7 @@ export const SESSION_TEXTS = {
   micAudioTitle: "Włącz mikrofon",
   micAudioText: "Przeglądarka wstrzymała dźwięk do pierwszego kliknięcia. Kliknij przycisk, a awatar zacznie Cię słyszeć.",
   micAudioButton: "Włącz mikrofon",
-  // The voice check before Start (components/VoiceCheck.jsx).
+  // The voice check before Start (screens/StartScreen.jsx).
   checkTitle: "Sprawdźmy, czy dobrze Cię słychać",
   checkIntro: "Zmierzę, jak głośno dochodzi Twój głos, i ustawię pod niego mikrofon. Po kliknięciu „Sprawdź” powiedz normalnym głosem:",
   checkPhrase: "Cześć, zaczynamy!",

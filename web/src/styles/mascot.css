@@ -1,0 +1,136 @@
+/* ==========================================================================
+   mascot.css — Gym Coach mascots (kit). Works with any inline mascot SVG that
+   follows the contract: viewBox 0 0 200 200, class="mascot mascot--<id>",
+   colour classes f-* / st-*, groups m-shadow, m-tilt > m-body, m-brows,
+   m-eyes > m-look, m-eyes-closed, m-eyes-happy, m-lips, m-mouth.
+   State = a class on ANY ancestor: .is-idle | .is-speaking | .is-listening |
+   .is-thinking | .is-happy | .is-paused. Mouth: --level 0–1 on an ancestor
+   (read only in .is-speaking; the code sends 0, ⅓, ⅔, 1). Entry: .m-enter.
+   Groups move only through CSS transforms here — never transform="" in SVG.
+   ========================================================================== */
+
+:where(:root) {
+  /* fallbacks when tokens.css is not loaded (zero specificity: tokens.css wins in every theme) */
+  --m-body: #2d3035; --m-soft: #c6f432; --m-clay: #ff8a3d; --m-cream: #f7f5ea;
+  --m-ink: #141514; --m-ink-2: #5b5f57; --m-face: #fbfaf3;
+}
+
+.mascot { display: block; width: 100%; height: 100%; overflow: visible; }
+.mascot--talerz { --m-body: var(--violet, #6c4fe0); }
+.mascot--szejk  { --m-face: #fbfaf3; }
+[data-theme="dark"] .mascot--szejk { --m-face: #e9e7da; }
+
+/* palette classes */
+.mascot .f-body, .mascot.f-body { fill: var(--m-body); }
+.mascot .f-soft  { fill: var(--m-soft); }
+.mascot .f-clay  { fill: var(--m-clay); }
+.mascot .f-ink   { fill: var(--m-ink); }
+.mascot .f-ink2  { fill: var(--m-ink-2); }
+.mascot .f-face  { fill: var(--m-face); }
+.mascot .st-ink  { stroke: var(--m-ink); }
+.mascot .st-ink2 { stroke: var(--m-ink-2); }
+.mascot .st-body { stroke: var(--m-body); }
+.mascot .st-clay { stroke: var(--m-clay); }
+.mascot .st-face { stroke: var(--m-face); }
+.mascot .ln { fill: none; }
+.mascot [class*="st-"] { stroke-linecap: round; stroke-linejoin: round; }
+.mascot .w2 { stroke-width: 2; }  .mascot .w3 { stroke-width: 3; }
+.mascot .w4 { stroke-width: 4; }  .mascot .w5 { stroke-width: 5; }
+.mascot .w6 { stroke-width: 6; }  .mascot .w7 { stroke-width: 7; }
+.mascot .w8 { stroke-width: 8; }  .mascot .w14 { stroke-width: 14; }
+.mascot .cheek { opacity: .55; }
+.mascot .m-shadow ellipse { opacity: .16; }
+
+/* every animated group scales/rotates around its own box */
+.mascot .m-shadow, .mascot .m-tilt, .mascot .m-body, .mascot .m-brows,
+.mascot .m-eyes, .mascot .m-look, .mascot .m-eyes-closed, .mascot .m-eyes-happy,
+.mascot .m-lips, .mascot .m-mouth { transform-box: fill-box; }
+.mascot .m-tilt   { transform-origin: 50% 100%; }
+.mascot .m-body   { transform-origin: 50% 100%; }
+.mascot .m-shadow { transform-origin: 50% 50%; }
+.mascot .m-eyes   { transform-origin: 50% 50%; }
+.mascot .m-look   { transform-origin: 50% 50%; }
+.mascot .m-brows  { transform-origin: 50% 100%; }
+.mascot .m-eyes-closed, .mascot .m-eyes-happy { opacity: 0; transition: opacity .12s; }
+.mascot .m-eyes   { transition: opacity .12s; }
+
+/* --- mouth: the jaw drops from the lips line ------------------------------
+   level 0 → lips (smile); ⅓ slightly; ⅔ half; 1 wide. Width grows a little
+   less than height so the shapes read as one mouth opening, not zooming. */
+.mascot .m-mouth {
+  --open: 0;
+  transform-origin: 50% 0;
+  transform: scale(calc(.78 + var(--open) * .22), calc(.18 + var(--open) * .82));
+  opacity: 0;
+  transition: transform 70ms cubic-bezier(.3, .7, .4, 1), opacity 60ms linear;
+}
+.mascot .m-lips { transition: opacity 60ms linear; }
+.is-speaking .mascot .m-mouth {
+  --open: var(--level, 0);
+  opacity: clamp(0, calc(var(--level, 0) * 6), 1);
+}
+.is-speaking .mascot .m-lips { opacity: clamp(0, calc(1 - var(--level, 0) * 6), 1); }
+
+/* --- idle: breathing, blinking, glancing ---------------------------------- */
+.mascot .m-body { animation: m-breathe 3.8s ease-in-out infinite; }
+.mascot .m-shadow { animation: m-shadow-breathe 3.8s ease-in-out infinite; }
+.mascot .m-eyes { animation: m-blink 5.2s infinite; }
+.mascot .m-look { animation: m-glance 11s ease-in-out infinite; }
+
+@keyframes m-breathe { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(1.012, 1.028); } }
+@keyframes m-shadow-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.04); } }
+@keyframes m-blink { 0%, 93%, 100% { transform: scaleY(1); } 95.5% { transform: scaleY(.08); } }
+@keyframes m-glance {
+  0%, 30%, 100% { transform: translate(0, 0); }
+  36%, 48% { transform: translate(-3px, 0); }
+  56%, 70% { transform: translate(3px, -1px); }
+}
+
+/* --- speaking: livelier breath, gentle nod, brows punctuate ------------------ */
+.is-speaking .mascot .m-tilt { animation: m-nod 2.4s ease-in-out infinite; }
+.is-speaking .mascot .m-body { animation-duration: 2.4s; }
+.is-speaking .mascot .m-brows { animation: m-brow-beat 2.4s ease-in-out infinite; }
+.is-speaking .mascot .m-look { animation: none; transform: translate(0, 0); }
+@keyframes m-nod { 0%, 100% { transform: rotate(0deg); } 30% { transform: rotate(-1.6deg) translateY(-1px); } 70% { transform: rotate(1.4deg); } }
+@keyframes m-brow-beat { 0%, 60%, 100% { transform: translateY(0); } 70% { transform: translateY(-3px); } }
+
+/* --- listening: head tilted toward the user, brows up, eyes on you ---------- */
+.is-listening .mascot .m-tilt { animation: m-listen-tilt 4.5s ease-in-out infinite; }
+.is-listening .mascot .m-brows { transform: translateY(-3px); transition: transform .25s; }
+.is-listening .mascot .m-look { animation: none; transform: translate(1px, 0) scale(1.08); transition: transform .3s; }
+@keyframes m-listen-tilt { 0%, 100% { transform: rotate(-5deg); } 50% { transform: rotate(-3.5deg); } }
+
+/* --- thinking: eyes up and aside, slow sway, one brow higher ---------------- */
+.is-thinking .mascot .m-look { animation: m-think-look 3.2s ease-in-out infinite; }
+.is-thinking .mascot .m-tilt { animation: m-sway 3.2s ease-in-out infinite; }
+.is-thinking .mascot .m-brows { animation: m-brow-think 3.2s ease-in-out infinite; }
+@keyframes m-think-look { 0%, 100% { transform: translate(-3px, -4px); } 50% { transform: translate(3px, -4px); } }
+@keyframes m-sway { 0%, 100% { transform: rotate(2deg); } 50% { transform: rotate(-2deg); } }
+@keyframes m-brow-think { 0%, 100% { transform: translateY(-2px) rotate(-3deg); } 50% { transform: translateY(-3px) rotate(3deg); } }
+
+/* --- happy: a set or the workout is done — eyes ^ ^, little hops ---------- */
+.is-happy .mascot .m-eyes { opacity: 0; animation: none; }
+.is-happy .mascot .m-eyes-happy { opacity: 1; }
+.is-happy .mascot .m-tilt { animation: m-hop .9s cubic-bezier(.3, .6, .4, 1) 3; }
+.is-happy .mascot .m-shadow { animation: m-hop-shadow .9s cubic-bezier(.3, .6, .4, 1) 3; }
+.is-happy .mascot .m-brows { transform: translateY(-4px); }
+@keyframes m-hop { 0%, 100% { transform: translateY(0) scale(1, 1); } 15% { transform: translateY(0) scale(1.05, .94); } 45% { transform: translateY(-16px) scale(.97, 1.04); } 75% { transform: translateY(0) scale(1.03, .97); } }
+@keyframes m-hop-shadow { 0%, 100% { transform: scale(1); opacity: 1; } 45% { transform: scale(.72); opacity: .6; } }
+
+/* --- paused: eyes closed, slow calm breath ---------------------------------- */
+.is-paused .mascot .m-eyes { opacity: 0; animation: none; }
+.is-paused .mascot .m-eyes-closed { opacity: 1; }
+.is-paused .mascot .m-body { animation-duration: 6.5s; }
+.is-paused .mascot .m-tilt { transform: rotate(-2deg); }
+.is-paused .mascot .m-brows { transform: translateY(2px); }
+
+/* --- entry -------------------------------------------------------------- */
+.m-enter .mascot, .mascot.m-enter { animation: m-enter .7s cubic-bezier(.2, .9, .3, 1.25) both; }
+@keyframes m-enter { from { transform: translateY(24px) scale(.88); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* --- reduced motion: nothing moves but the mouth ---------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .mascot, .mascot * { animation: none !important; }
+  .mascot .m-mouth, .mascot .m-lips { transition: none; }
+  .is-listening .mascot .m-tilt { transform: rotate(-4deg); }
+}

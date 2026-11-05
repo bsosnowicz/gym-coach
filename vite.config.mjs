@@ -22,6 +22,8 @@ export default defineConfig({
     port: 5174,
     proxy: {
       "/api": "http://127.0.0.1:3001",
+      // Manrope is served by the app server from public/fonts (url("/fonts/…") in tokens.css).
+      "/fonts": "http://127.0.0.1:3001",
     },
   },
   build: {

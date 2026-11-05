@@ -1,0 +1,108 @@
+/* ==========================================================================
+   Gym Coach — app layout. One component, two layouts by container width:
+   < 900px = phone (stacked, bottom tab bar), ≥ 900px = desktop (top tabs,
+   two columns). Container queries, so a 390px frame and a 1280px frame on
+   the same page each get their own layout.
+   (The artifact's device frames, screen pairs and prototype bar are left out.)
+   ========================================================================== */
+/* The real page: the app fills the window and scrolls inside .gc-main. */
+html, body, #app { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
+
+[data-theme="dark"] .gc-tab[aria-current="page"] { background: var(--lime); color: var(--on-lime); }
+
+.gc-topbar { order: 1; } .gc-main { order: 2; } .gc-tabbar { order: 3; }
+.gc-app { container: app / inline-size; position: relative; display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; background: var(--bg); color: var(--ink); }
+.gc-main { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.gc-main > * { width: 100%; max-width: var(--content-max); margin: 0 auto; padding: var(--space-4); }
+/* Tabs are hidden, not unmounted: the session (and its avatar video) must survive a tab change. */
+.gc-main > [hidden] { display: none; }
+
+/* ---------- Start ---------- */
+.gc-start { display: grid; gap: var(--space-4); }
+.gc-start__title { margin: 0 0 var(--space-4); font-size: 34px; line-height: 38px; font-weight: 800; letter-spacing: -.03em; text-wrap: balance; }
+.gc-start__points { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
+.gc-start__points li { display: flex; gap: var(--space-3); align-items: flex-start; font-size: 15px; line-height: 22px; color: var(--ink-2); }
+.gc-start__points li strong { color: var(--ink); }
+.gc-start__points .gc-icon { flex: none; margin-top: 1px; padding: 6px; width: 32px; height: 32px; border-radius: 50%; background: var(--lime-soft); color: var(--lime-ink); }
+.gc-start__coach .gc-chips { margin-bottom: var(--space-4); }
+.gc-start__go { display: grid; gap: var(--space-2); position: sticky; bottom: 0; z-index: 3; margin: 0 calc(-1 * var(--space-4)); padding: var(--space-3) var(--space-4) var(--space-4); background: linear-gradient(to bottom, transparent, var(--bg) 24px); }
+.gc-start__go .gc-muted { text-align: center; }
+
+/* ---------- Session ---------- */
+.gc-session { display: grid; gap: var(--space-4); grid-template-areas: "stage" "main" "aside"; }
+.gc-session__stage { grid-area: stage; min-width: 0; }
+.gc-session__main { grid-area: main; min-width: 0; }
+.gc-session__aside { grid-area: aside; display: grid; gap: var(--space-3); align-content: start; min-width: 0; }
+.gc-talk { padding: var(--space-4); }
+.gc-talk .gc-card__head { margin-bottom: var(--space-3); }
+
+.gc-facts__list { list-style: none; margin: 0 0 var(--space-4); padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: var(--space-2); }
+.gc-facts__list li { display: grid; grid-template-columns: 20px 1fr; align-items: center; column-gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-md); background: var(--surface-2); font-size: 13px; color: var(--ink-2); font-weight: 600; }
+.gc-facts__list li strong { grid-column: 2; font-size: 15px; color: var(--ink); }
+.gc-facts__list li[data-done="true"] .gc-icon { color: var(--lime-ink); }
+.gc-facts__list li[data-done="false"] { background: transparent; box-shadow: inset 0 0 0 1.5px var(--line-strong); }
+.gc-facts__list li[data-done="false"] strong { color: var(--ink-2); }
+.gc-cta { display: grid; gap: var(--space-2); justify-items: stretch; text-align: center; }
+
+.gc-session__bar { position: sticky; bottom: 0; z-index: 4; margin: 0 calc(-1 * var(--space-4)) calc(-1 * var(--space-4)); padding: var(--space-3) var(--space-4); background: var(--bg); border-top: 1px solid var(--line); }
+.gc-session__aside > .gc-controls { display: none; }
+.gc-session .gc-stage__caption { left: 44%; top: 50%; bottom: auto; translate: 0 -50%; }
+.gc-session[data-phase="workout"] .scene-mascot { left: 24%; }
+
+/* phone: the workout panel is the hero, the stage a strip, controls last */
+.gc-session[data-phase="workout"] .gc-stage { aspect-ratio: 21 / 9; }
+.gc-session[data-phase="workout"] .gc-talk, .gc-session[data-phase="workout"] .gc-session__aside .gc-camera { display: none; }
+.gc-session[data-paused] .gc-session__main { display: none; }
+.gc-session[data-paused] .gc-stage { aspect-ratio: 3 / 4; }
+
+/* ---------- History ---------- */
+.gc-page-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-4); }
+.gc-historypage .gc-history__tabs { display: flex; }
+.gc-history__grid[data-tab="treningi"] [data-col]:not([data-col="treningi"]),
+.gc-history__grid[data-tab="postepy"] [data-col]:not([data-col="postepy"]),
+.gc-history__grid[data-tab="kontuzje"] [data-col]:not([data-col="kontuzje"]) { display: none; }
+
+/* ---------- phone chrome ---------- */
+@container app (max-width: 899px) {
+  .gc-topbar { height: 56px; }
+  .gc-session__aside .gc-controls { order: -1; }
+}
+@container app (min-width: 900px) {
+  .gc-tabbar { display: none; }
+  .gc-tabs { display: flex; }
+  .gc-topbar { padding: 0 var(--space-8); }
+  .gc-main > * { padding: var(--space-8); }
+
+  .gc-start { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); grid-template-areas: "intro mic" "stage coach" "stage go"; gap: var(--space-6); align-items: start; }
+  .gc-start__intro { grid-area: intro; align-self: center; }
+  .gc-start__title { font-size: 48px; line-height: 50px; }
+  .gc-start__stage { grid-area: stage; }
+  .gc-start__stage .gc-stage { aspect-ratio: 16 / 11; }
+  .gc-start__mic { grid-area: mic; }
+  .gc-start__coach { grid-area: coach; }
+  .gc-start__go { grid-area: go; position: static; margin: 0; padding: 0; background: none; }
+
+  .gc-session { grid-template-columns: minmax(0, 1fr) 380px; grid-template-rows: auto 1fr; grid-template-areas: "stage aside" "main aside"; gap: var(--space-6); align-items: start; }
+  .gc-session__bar, .gc-stage__caption { display: none; }
+  .gc-session__aside > .gc-controls { display: grid; }
+  .gc-session[data-phase="workout"] .scene-mascot { left: 50%; }
+  .gc-session[data-phase="workout"], .gc-session[data-phase="summary"] { grid-template-areas: "main stage" "main aside"; grid-template-columns: minmax(0, 1fr) 400px; }
+  .gc-session[data-phase="workout"] .gc-stage { aspect-ratio: 4 / 3; }
+  .gc-session[data-phase="workout"] .gc-session__aside .gc-camera { display: grid; }
+  .gc-session[data-phase="workout"] .gc-talk { display: block; }
+  .gc-session[data-phase="plan"] { grid-template-areas: "main stage" "main aside"; grid-template-columns: minmax(0, 1fr) 400px; }
+  .gc-session[data-paused] .gc-session__main { display: block; }
+  .gc-session[data-paused] .gc-stage { aspect-ratio: 4 / 3; }
+  .gc-session[data-paused] .gc-session__main { opacity: .5; pointer-events: none; }
+  .gc-session[data-phase="interview"] .gc-stage { aspect-ratio: 16 / 9; }
+  .gc-session__aside { position: sticky; top: var(--space-8); }
+
+  .gc-historypage .gc-history__tabs { display: none; }
+  .gc-history__grid { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); grid-template-areas: "w p" "w i"; }
+  .gc-history__grid [data-col] { display: block !important; }
+  .gc-history__grid [data-col="treningi"] { grid-area: w; }
+  .gc-history__grid [data-col="postepy"] { grid-area: p; }
+  .gc-history__grid [data-col="kontuzje"] { grid-area: i; }
+  .gc-page-head .title-l { font-size: 36px; line-height: 40px; }
+}

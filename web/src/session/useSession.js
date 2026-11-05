@@ -1,6 +1,6 @@
 // The running conversation with the avatar: the Lite adapter, what the server
 // sends over SSE and what a page needs to show it. No markup here: an app
-// draws it its own way, or uses screens/SessionScreen.jsx as it is.
+// draws it its own way (Gym Coach: App.jsx and screens/SessionScreen.jsx).
 import { useEffect, useRef, useState } from "react";
 import { log } from "../../../public/ui/log.js";
 import { createConversationFloor } from "../../../public/session/conversation-floor.js";

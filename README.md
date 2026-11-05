@@ -48,9 +48,10 @@ naraz z sandboxu, a minuta wychodzi ok. 3× taniej. Przy starcie serwer pisze, k
   (`public/session/voice-level.js`).
 - Stan maskotki: przerwa, radość przez 2 s po skończonej serii i treningu, mówi, myśli
   (użytkownik mówił ostatni), słucha (mikrofon włączony), spoczynek.
-- Maskotki i tła (`public/ui/mascots.js`, `public/ui/scenes.js`, `public/css/mascot.css`,
-  `public/css/scene.css`) są tymczasowo z language-coach, do czasu własnych z Claude Design;
-  kontrakt animacji opisuje nagłówek `mascot.css`.
+- Maskotki (Trener, Talerz, Szejk) i sceny (Siłownia, Dom, Plener) pochodzą z design systemu
+  z Claude Design: `web/src/ui/art.js`, `web/src/styles/mascot.css` i `scene.css`; kontrakt
+  animacji opisuje nagłówek `mascot.css`. Wybór trenera i tła: Start albo twarz trenera
+  w górnym pasku (zapis w `localStorage`). Usta: cztery kształty, `--level` 0 / 0,33 / 0,66 / 1.
 
 ## Trening głosem
 

@@ -16,7 +16,9 @@ import { createCamera, describeCameraError, listCameras } from "../../../public/
 import { createCorrectionLoop } from "../../../public/camera/correction-loop.js";
 import { clearSkeleton, drawSkeleton } from "../../../public/camera/skeleton.js";
 import { createYoloPoseStream, yoloPoseWsUrl } from "../../../public/camera/yolo-stream.js";
+import { Badge, Button, Icon } from "../ui/index.js";
 import { CAMERA_TEXTS } from "./texts.js";
+import "./camera.css";
 
 // The neutral scenario of yolo-backend; exercises come with stages 05–06.
 const SCENARIO = "standing";
@@ -56,6 +58,9 @@ export default function CameraPanel({ config, session, texts = {} }) {
   // "off" | "starting" | "on"
   const [state, setState] = useState("off");
   const [message, setMessage] = useState(t.off);
+  // What the last analysed frame showed: { person, deviation } (null: no analysis); unavailable: YOLO is gone.
+  const [seen, setSeen] = useState(null);
+  const [unavailable, setUnavailable] = useState(false);
 
   const loopRef = useRef(null);
   if (!loopRef.current) {
@@ -88,6 +93,8 @@ export default function CameraPanel({ config, session, texts = {} }) {
     yoloRef.current?.stop();
     yoloRef.current = null;
     loopRef.current.reset();
+    setSeen(null);
+    setUnavailable(false);
     if (canvasRef.current) clearSkeleton(canvasRef.current.getContext("2d"));
   }
 
@@ -114,6 +121,8 @@ export default function CameraPanel({ config, session, texts = {} }) {
           if (analysis.detected) drawSkeleton(ctx, analysis.person?.keypoints, { issue: analysis.deviations?.length > 0 });
           else clearSkeleton(ctx);
           setMessage(describeAnalysis(analysis, latest.current.t));
+          const deviation = analysis.deviations?.[0];
+          setSeen({ person: analysis.detected, deviation: analysis.detected && deviation ? deviation.label || deviation.id : null });
           loopRef.current.handleAnalysis(analysis);
         },
         onTelemetry: (stats) => {
@@ -125,6 +134,8 @@ export default function CameraPanel({ config, session, texts = {} }) {
           // Only the final give-up after the reconnect attempts means the analysis is gone.
           if (epoch === epochRef.current && /wznowienie nieudane/.test(error.message)) {
             clearSkeleton(ctx);
+            setSeen(null);
+            setUnavailable(true);
             setMessage(latest.current.t.yoloLost);
           }
         },
@@ -140,6 +151,7 @@ export default function CameraPanel({ config, session, texts = {} }) {
     } catch (error) {
       if (epoch !== epochRef.current) return;
       log(`YOLO niedostępny (${error.message}) — sam podgląd kamery.`);
+      setUnavailable(true);
       setMessage(t.yoloUnavailable);
     }
   }
@@ -183,31 +195,39 @@ export default function CameraPanel({ config, session, texts = {} }) {
     if (state === "on") enable(id);
   }
 
+  const on = state !== "off";
   return (
-    <section className="camera" aria-label={t.title}>
-      <div className="camera-view" hidden={state === "off"}>
-        <video ref={videoRef} muted playsInline />
-        <canvas ref={canvasRef} />
-      </div>
-      <div className="camera-controls">
-        <button
-          type="button"
-          className="btn"
-          aria-pressed={state === "on"}
-          disabled={state === "starting"}
-          onClick={state === "on" ? disable : () => enable()}
-        >
+    <section className="gc-camera" aria-label={t.title}>
+      <header className="gc-camera__head">
+        <p className="title-s"><Icon name="camera" size={18} /> {t.title} <Badge tone="neutral">opcjonalnie</Badge></p>
+        <Button variant={on ? "secondary" : "primary"} icon={on ? "camera-off" : "camera"} aria-pressed={state === "on"}
+          disabled={state === "starting"} onClick={state === "on" ? disable : () => enable()}>
           {state === "on" ? t.disable : t.enable}
-        </button>
-        <label className="camera-device">
-          <span>{t.deviceLabel}</span>
-          <select value={deviceId} onChange={(event) => chooseDevice(event.target.value)} disabled={state === "starting"}>
-            <option value="">{t.defaultDevice}</option>
-            {devices.map((device) => <option key={device.id} value={device.id}>{device.label}</option>)}
-          </select>
-        </label>
+        </Button>
+      </header>
+      <label className="gc-camera__device">
+        <span>{t.deviceLabel}</span>
+        <select value={deviceId} onChange={(event) => chooseDevice(event.target.value)} disabled={state === "starting"}>
+          <option value="">{t.defaultDevice}</option>
+          {devices.map((device) => <option key={device.id} value={device.id}>{device.label}</option>)}
+        </select>
+      </label>
+      <div className={`gc-camera__view is-${state}`}>
+        {/* Mirrored like a mirror; the points are drawn in the same box, so they mirror with it. */}
+        <div className="gc-camera__mirror" hidden={!on}>
+          <video ref={videoRef} muted playsInline />
+          <canvas ref={canvasRef} />
+        </div>
+        {!on && <div className="gc-camera__off"><Icon name="camera-off" size={32} /><span>{t.title}: wyłączona</span></div>}
+        {seen?.deviation && (
+          <ul className="gc-camera__cues" aria-live="polite">
+            <li data-tone="fix"><Icon name="arrow-right" size={16} />{seen.deviation}</li>
+          </ul>
+        )}
+        {on && unavailable && <Badge tone="warn" icon="alert" className="gc-camera__badge">Brak analizy</Badge>}
+        {on && !unavailable && seen && !seen.person && <Badge tone="warn" icon="user" className="gc-camera__badge">Brak sylwetki w kadrze</Badge>}
       </div>
-      <p className="hint camera-status" role="status">{message}</p>
+      <p className="gc-camera__status body-s" role="status">{message}</p>
     </section>
   );
 }

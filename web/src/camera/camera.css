@@ -1,0 +1,6 @@
+/* The camera panel's own parts, on top of .gc-camera* (web/src/styles/components.css). */
+.gc-camera__mirror { position: absolute; inset: 0; transform: scaleX(-1); }
+.gc-camera__mirror[hidden] { display: none; }
+.gc-camera__mirror video, .gc-camera__mirror canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.gc-camera__device { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); font-size: 13px; font-weight: 700; color: var(--ink-2); }
+.gc-camera__device select { min-height: var(--hit-min); padding: 0 var(--space-3); border: 1.5px solid var(--line-strong); border-radius: var(--radius-pill); background: var(--surface); color: var(--ink); font: 700 14px var(--font-sans); }

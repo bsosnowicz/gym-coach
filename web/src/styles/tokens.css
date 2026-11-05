@@ -1,0 +1,131 @@
+/* Gym Coach — generated from tokens.json (Claude Design). Fonts: public/fonts/, served at /fonts/. */
+:root, [data-theme="light"] {
+  --bg: #f1f2ed;
+  --surface: #ffffff;
+  --surface-2: #f5f6f1;
+  --surface-hero: #16171a;
+  --on-hero: #f4f5ef;
+  --on-hero-muted: #a9ada2;
+  --ink: #141514;
+  --ink-2: #575a53;
+  --ink-3: #6b6e67;
+  --line: #e3e5de;
+  --line-strong: #83877e;
+  --lime: #c6f432;
+  --bar: #4f8a00;
+  --lime-soft: #eefbc8;
+  --on-lime: #141514;
+  --lime-ink: #3b6600;
+  --violet: #6c4fe0;
+  --violet-soft: #eeeafe;
+  --violet-ink: #5537c9;
+  --warn: #d0700c;
+  --warn-soft: #fff1e2;
+  --warn-ink: #8f4500;
+  --danger: #c8322a;
+  --on-danger: #ffffff;
+  --danger-soft: #fdeceb;
+  --danger-ink: #a8261f;
+  --focus: #6c4fe0;
+  --scrim: rgba(13, 14, 13, 0.62);
+  --m-body: #2d3035;
+  --m-soft: #c6f432;
+  --m-clay: #ff8a3d;
+  --m-cream: #f7f5ea;
+  --m-ink: #141514;
+  --m-ink-2: #5b5f57;
+  --m-face: #fbfaf3;
+  --s-sky: #e8ecdf;
+  --s-far: #d6dccb;
+  --s-near: #bfc7b1;
+  --s-floor: #cfd5c2;
+  --s-glow: #c6f432;
+  --shadow-card: 0 1px 2px rgba(20, 21, 20, 0.05), 0 6px 20px rgba(20, 21, 20, 0.05);
+  --shadow-pop: 0 2px 6px rgba(20, 21, 20, 0.08), 0 24px 60px rgba(20, 21, 20, 0.18);
+  --shadow-lime: 0 8px 24px rgba(118, 160, 0, 0.35);
+}
+[data-theme="dark"] {
+  --bg: #0d0e0d;
+  --surface: #17181a;
+  --surface-2: #202124;
+  --surface-hero: #1f2124;
+  --on-hero: #f4f5ef;
+  --on-hero-muted: #a9ada2;
+  --ink: #f1f2ec;
+  --ink-2: #a8aba2;
+  --ink-3: #8d9088;
+  --line: #2b2d30;
+  --line-strong: #6d7169;
+  --lime: #c6f432;
+  --bar: #c6f432;
+  --lime-soft: #2a3410;
+  --on-lime: #141514;
+  --lime-ink: #c6f432;
+  --violet: #a993ff;
+  --violet-soft: #2a2445;
+  --violet-ink: #c3b5ff;
+  --warn: #ff9f4a;
+  --warn-soft: #3a2610;
+  --warn-ink: #ffbf85;
+  --danger: #ff7468;
+  --on-danger: #141514;
+  --danger-soft: #3d1715;
+  --danger-ink: #ff9d94;
+  --focus: #b9a6ff;
+  --scrim: rgba(0, 0, 0, 0.7);
+  --m-body: #22252a;
+  --m-soft: #b5e02c;
+  --m-clay: #ff9a55;
+  --m-cream: #e9e7da;
+  --m-ink: #0d0e0d;
+  --m-ink-2: #6d7169;
+  --m-face: #f1efe4;
+  --s-sky: #30353c;
+  --s-far: #3c424a;
+  --s-near: #535b64;
+  --s-floor: #383e46;
+  --s-glow: #c6f432;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-pop: 0 2px 6px rgba(0, 0, 0, 0.5), 0 24px 60px rgba(0, 0, 0, 0.6);
+  --shadow-lime: 0 8px 28px rgba(198, 244, 50, 0.22);
+}
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-14: 56px;
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 22px;
+  --radius-xl: 30px;
+  --radius-pill: 999px;
+  --hit-min: 44px;
+  --hit-gym: 60px;
+  --nav-h: 64px;
+  --content-max: 1240px;
+  --font-sans: "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+.countdown { font-family: var(--font-sans); font-size: 96px; line-height: 1; font-weight: 800; letter-spacing: -0.04em; }
+.display-xl { font-family: var(--font-sans); font-size: 80px; line-height: 0.95; font-weight: 800; letter-spacing: -0.035em; }
+.display { font-family: var(--font-sans); font-size: 56px; line-height: 1; font-weight: 800; letter-spacing: -0.03em; }
+.display-s { font-family: var(--font-sans); font-size: 36px; line-height: 40px; font-weight: 800; letter-spacing: -0.02em; }
+.title-l { font-family: var(--font-sans); font-size: 30px; line-height: 36px; font-weight: 800; letter-spacing: -0.02em; }
+.title { font-family: var(--font-sans); font-size: 22px; line-height: 28px; font-weight: 700; letter-spacing: -0.01em; }
+.title-s { font-family: var(--font-sans); font-size: 17px; line-height: 24px; font-weight: 700; }
+.body-l { font-family: var(--font-sans); font-size: 17px; line-height: 26px; font-weight: 500; }
+.body { font-family: var(--font-sans); font-size: 15px; line-height: 22px; font-weight: 500; }
+.body-s { font-family: var(--font-sans); font-size: 13px; line-height: 18px; font-weight: 500; }
+.label { font-family: var(--font-sans); font-size: 14px; line-height: 18px; font-weight: 700; }
+.caption { font-family: var(--font-sans); font-size: 12px; line-height: 16px; font-weight: 700; letter-spacing: 0.06em; }
+.mono { font-family: var(--font-mono); font-size: 12px; line-height: 18px; font-weight: 500; }
+@font-face { font-family: "Manrope"; src: url("/fonts/Manrope-400Regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Manrope"; src: url("/fonts/Manrope-500Medium.woff2") format("woff2"); font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: "Manrope"; src: url("/fonts/Manrope-600SemiBold.woff2") format("woff2"); font-weight: 600; font-style: normal; font-display: swap; }
+@font-face { font-family: "Manrope"; src: url("/fonts/Manrope-700Bold.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "Manrope"; src: url("/fonts/Manrope-800ExtraBold.woff2") format("woff2"); font-weight: 800; font-style: normal; font-display: swap; }
