@@ -234,6 +234,11 @@ i restart serwisu YOLO oraz `npm start` (oba czytają scenariusze przy starcie).
 - Strona zgłasza, czy analiza działa (`POST /api/session/camera`). Tylko wtedy, przy ćwiczeniu
   z innym widokiem niż poprzednie, trener mówi „Ustaw kamerę z boku / z przodu…”: w zapowiedzi
   przerwy przed nowym ćwiczeniem albo przed pierwszą serią.
+- **Bramki pozycji** (`rep.gates`): reguły mówiące, że to w ogóle to ćwiczenie — pompka tylko
+  z tułowiem w podporze (`incline` bark→biodro < 35°), wyciskanie z dłońmi nie niżej niż barki,
+  przysiad z tułowiem nie poziomo. Klatka z niespełnioną albo niewidoczną bramką nie liczy się
+  (łokieć zgina się tak samo w wyciskaniu jak w pompce), a trener mówi jej `correction`
+  („To nie wygląda na pompkę…”) — tylko w trakcie serii, w przerwie milczy (`cues.js`).
 - Serii kamera sama nie kończy — liczy i podpowiada; koniec serii to dalej „gotowe”.
 - Trener liczy na głos każde nowe powtórzenie z kamery („jeden”, „dwa”…), tylko gdy nikt
   nie mówi (spóźniona liczba w środku zdania przeszkadza bardziej niż pominięta). Liczby nie

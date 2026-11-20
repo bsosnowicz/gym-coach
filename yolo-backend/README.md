@@ -80,10 +80,15 @@ Bez `scenario` serwis zwraca same punkty i widoczność (`is_correct: null`).
 - `angle`: kąt `a-b-c` w punkcie `b` (stopnie),
 - `horizontal_delta`: `b.x - a.x`,
 - `vertical_delta`: `b.y - a.y`,
+- `incline`: nachylenie odcinka `a-b` względem poziomu, 0–90° bez względu na kierunek (tułów
+  w podporze ok. 10°, stojący ok. 90°),
 
-z progami `min` / `max` i tekstem `correction`, który trafia do korekty głosem.
-Współrzędne są znormalizowane do ramki, oś `y` rośnie w dół. Reguła z `left`
+z progami `min` / `max` i tekstem `correction`, który trafia do korekty głosem. Reguła bez
+progów tylko mierzy (kąt liczący powtórzenia). Współrzędne są znormalizowane do ramki, oś `y`
+rośnie w dół — na kadrze 4:3 kąty są lekko przekrzywione, stąd progi z zapasem. Reguła z `left`
 i `right` mierzy stronę z pewniejszymi punktami.
 
-`standing` to neutralna postawa wyjściowa z jedną regułą (barki nad biodrami); scenariusze ćwiczeń (przysiad)
-dochodzą na etapach 05–06.
+`standing` to neutralna postawa wyjściowa z jedną regułą (barki nad biodrami). Scenariusze ćwiczeń
+(`squat`, `pushup`, `overhead_press`) mają też `view`, `exercises` / `patterns` i `rep`: kąt liczący
+powtórzenia, progi `low` / `high` i `gates` — reguły pozycji, bez których klatka się nie liczy
+(np. pompka tylko z tułowiem w podporze), a ich `correction` trener mówi w trakcie serii.

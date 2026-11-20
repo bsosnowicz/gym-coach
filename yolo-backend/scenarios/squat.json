@@ -3,17 +3,52 @@
   "label": "Przysiad",
   "description": "Przysiady i ich odmiany, kamera z boku. Powtórzenie liczy kąt w kolanie: stanie → dół → stanie.",
   "view": "side",
-  "patterns": ["squat"],
-  "rep": { "rule": "knee_angle", "start": "high", "low": 110, "high": 155 },
+  "patterns": [
+    "squat"
+  ],
+  "rep": {
+    "rule": "knee_angle",
+    "start": "high",
+    "low": 110,
+    "high": 155,
+    "gates": [
+      "lying_down"
+    ]
+  },
   "rules": [
     {
       "id": "knee_angle",
       "label": "kąt w kolanie",
       "type": "angle",
       "points": {
-        "left": ["left_hip", "left_knee", "left_ankle"],
-        "right": ["right_hip", "right_knee", "right_ankle"]
+        "left": [
+          "left_hip",
+          "left_knee",
+          "left_ankle"
+        ],
+        "right": [
+          "right_hip",
+          "right_knee",
+          "right_ankle"
+        ]
       }
+    },
+    {
+      "id": "lying_down",
+      "label": "tułów poziomo",
+      "correction": "To nie wygląda na przysiad: stań bokiem do kamery.",
+      "type": "incline",
+      "points": {
+        "left": [
+          "left_shoulder",
+          "left_hip"
+        ],
+        "right": [
+          "right_shoulder",
+          "right_hip"
+        ]
+      },
+      "min": 25
     }
   ]
 }

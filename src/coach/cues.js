@@ -13,13 +13,18 @@ const path = require("path");
 
 const DEFAULT_SCENARIOS_DIR = path.join(__dirname, "..", "..", "yolo-backend", "scenarios");
 
-// scenario id -> deviation id -> correction text. No directory: no corrections.
+// scenario id -> deviation id -> { text, gate }. No directory: no corrections.
+// gate: a rule saying the body is in the exercise at all (rep.gates of the
+// scenario) — said only during a set: between sets the user stands, and a
+// push-up gate would nag all through the rest.
 function loadCorrections(dir = DEFAULT_SCENARIOS_DIR) {
   const corrections = new Map();
   if (!fs.existsSync(dir)) return corrections;
   for (const file of fs.readdirSync(dir).filter((name) => name.endsWith(".json"))) {
     const scenario = JSON.parse(fs.readFileSync(path.join(dir, file), "utf8"));
-    const rules = new Map((scenario.rules || []).filter((rule) => rule.correction).map((rule) => [rule.id, rule.correction]));
+    const gates = new Set(scenario.rep?.gates || []);
+    const rules = new Map((scenario.rules || []).filter((rule) => rule.correction)
+      .map((rule) => [rule.id, { text: rule.correction, gate: gates.has(rule.id) }]));
     corrections.set(scenario.id, rules);
   }
   return corrections;
@@ -42,13 +47,14 @@ function cueBlockedBy(session) {
 // free of engine imports beyond what server.js wires.
 function createCueSpeaker({ speakText, record = () => {}, corrections = loadCorrections() }) {
   return {
-    correctionFor: (scenario, deviation) => corrections.get(scenario)?.get(deviation) || null,
+    correctionFor: (scenario, deviation) => corrections.get(scenario)?.get(deviation)?.text || null,
 
     // { spoken, reason? }: reason says why it was not spoken.
     async speak(session, { scenario, deviation }) {
-      const text = this.correctionFor(scenario, deviation);
-      if (!text) return { spoken: false, reason: "unknown_deviation" };
-      const blocked = cueBlockedBy(session);
+      const correction = corrections.get(scenario)?.get(deviation);
+      if (!correction) return { spoken: false, reason: "unknown_deviation" };
+      const { text } = correction;
+      const blocked = (correction.gate && session.coachState?.runner?.progress.phase !== "set" && "not_in_set") || cueBlockedBy(session);
       if (blocked) {
         record(session, "camera.cue_dropped", { scenario, deviation, reason: blocked });
         return { spoken: false, reason: blocked };

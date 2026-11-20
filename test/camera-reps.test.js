@@ -66,6 +66,25 @@ test("Licznik: klatki bez kąta nic nie zmieniają, zbyt szybki skok to szum", a
   assert.equal(reps.count, 1, "po resecie liczy od nowa");
 });
 
+test("Licznik z bramką: łokieć zgięty i wyprostowany przy niespełnionej pozycji (wyciskanie zamiast pompki) nic nie liczy", async () => {
+  const { createRepCounter } = await import("../public/camera/rep-counter.js");
+  let clock = 0;
+  const reps = createRepCounter({ rule: "elbow_angle", start: "high", low: 100, high: 150, gates: ["not_in_plank"], now: () => clock });
+  const frame = (value, gate) => {
+    clock += 170;
+    reps.handle({
+      measurements: [{ id: "elbow_angle", visible: true, value }, { id: "not_in_plank", visible: gate !== "hidden" }],
+      deviations: gate === "failed" ? [{ id: "not_in_plank" }] : [],
+    });
+  };
+  for (const value of [170, 90, 85, 160, 172]) frame(value, "failed");
+  assert.equal(reps.count, 0, "tułów pionowo — to nie pompka");
+  for (const value of [170, 90, 85, 160, 172]) frame(value, "hidden");
+  assert.equal(reps.count, 0, "nie widać bioder — nie wiadomo, czy to pompka");
+  for (const value of [170, 90, 85, 160, 172]) frame(value, "ok");
+  assert.equal(reps.count, 1, "w podporze liczy");
+});
+
 test("Licznik: wyciskanie zaczyna nisko (start: low) — przy barkach → ręce proste → przy barkach", async () => {
   const { reps, frames } = await counter({ rule: "elbow_angle", start: "low", low: 110, high: 150 });
   frames(85, 120, 160, 170, 140, 90);
@@ -114,7 +133,7 @@ test("Kamera w treningu: prośba o ustawienie z boku i z przodu, „gotowe” bi
   assert.equal(state.runner.progress.phase, "warmup");
   await say("Gotowe.");
   assert.match(spoken().at(-1), /^Ustaw kamerę z boku, tak żeby było widać całą sylwetkę\. Ćwiczenie 1 z 2: przysiad goblet\./);
-  assert.deepEqual(coach.workoutEvent(session).workout.camera, { scenario: "squat", view: "side", rep: { rule: "knee_angle", start: "high", low: 110, high: 155 } });
+  assert.deepEqual(coach.workoutEvent(session).workout.camera, { scenario: "squat", view: "side", rep: { rule: "knee_angle", start: "high", low: 110, high: 155, gates: ["lying_down"] } });
 
   assert.equal(coach.cameraReps(session, { count: 9, exerciseIndex: 0, setIndex: 1 }), false, "nie ta seria");
   assert.equal(coach.cameraReps(session, { count: 9, exerciseIndex: 0, setIndex: 0 }), true);

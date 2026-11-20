@@ -25,7 +25,7 @@ test("Kamera: /api/config podaje adres YOLO, nagłówki wpuszczają kamerę i se
   assert.deepEqual(body.camera.scenarios.map((item) => item.scenario), ["overhead_press", "pushup", "squat"]);
   assert.deepEqual(body.camera.scenarios[2], {
     scenario: "squat", label: "Przysiad", angle: "kąt w kolanie", view: "side",
-    rep: { rule: "knee_angle", start: "high", low: 110, high: 155 },
+    rep: { rule: "knee_angle", start: "high", low: 110, high: 155, gates: ["lying_down"] },
   });
   assert.match(res.headers.get("permissions-policy"), /camera=\(self\)/);
   assert.match(res.headers.get("permissions-policy"), /microphone=\(self\)/);
