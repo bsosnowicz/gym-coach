@@ -110,6 +110,12 @@ const PHASE_TEXT = {
   done: "trening zakończony",
 };
 
+// The camera test (#test-kamery's session twin): one exercise, no interview, no warm-up.
+const CAMERA_TEST_RULES = `To jest test kamery, nie trening: jedno ćwiczenie, a aplikacja liczy powtórzenia
+z kamery i mówi je na głos. Na początku przywitaj się jednym krótkim zdaniem i powiedz, że sprawdzamy liczenie
+powtórzeń z kamery; ćwiczenie, ustawienie kamery i serię zapowie aplikacja. Nie pytaj o cel, samopoczucie ani plan.`;
+const CAMERA_TEST_PROMPT = `${PERSONA}\n${CAMERA_TEST_RULES}\n${TRAINING_RULES}\n${PAIN_RULES}\n${CAMERA_RULES}`;
+
 // What the model is told about the plan in every turn after it exists.
 function planContext(plan, progress) {
   const items = plan.exercises.map((item, index) =>
@@ -163,6 +169,6 @@ function describeProfile(profile, recovery = null) {
 }
 
 module.exports = {
-  BODY_PART_NAMES, PAIN_RULES, WEEK_PROMPT, SYSTEM_PROMPT,
+  BODY_PART_NAMES, PAIN_RULES, WEEK_PROMPT, SYSTEM_PROMPT, CAMERA_TEST_PROMPT,
   planContext, injuryContext, lastWorkoutContext, describeProfile,
 };

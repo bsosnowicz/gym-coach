@@ -80,5 +80,20 @@ class PoseRulesTest(unittest.TestCase):
         self.assertEqual(result["score"], 0.25)
 
 
+class InclineRuleTest(unittest.TestCase):
+    def test_incline_is_steepness_whatever_the_direction(self):
+        scenario = {"id": "t", "rules": [{"id": "torso", "label": "tułów", "type": "incline",
+                                          "points": {"any": ["left_shoulder", "left_hip"]}}]}
+
+        def incline(hip):
+            keypoints = [point("left_shoulder", 0.5, 0.5), point("left_hip", *hip)]
+            return evaluate_scenario(scenario, keypoints)["measurements"][0]["value"]
+
+        self.assertAlmostEqual(incline((0.8, 0.5)), 0.0)
+        self.assertAlmostEqual(incline((0.2, 0.5)), 0.0, msg="w lewo tak samo")
+        self.assertAlmostEqual(incline((0.5, 0.9)), 90.0)
+        self.assertAlmostEqual(incline((0.7, 0.7)), 45.0)
+
+
 if __name__ == "__main__":
     unittest.main()

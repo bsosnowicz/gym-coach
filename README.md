@@ -112,7 +112,8 @@ i zdarzenia `week_plan`).
 5. **Koniec.** Podsumowanie: ćwiczenia, serie, powtórzenia. Dziennik zapisuje się po każdej
    serii, więc zostaje też po Stop albo zamkniętej karcie.
 
-Bez kamery liczbę powtórzeń podaje użytkownik („zrobiłem 8”); na etapie 05 może ją podawać YOLO.
+Bez kamery liczbę powtórzeń podaje użytkownik („zrobiłem 8”); z kamerą liczy ją YOLO
+(przysiady, pompki, wyciskanie nad głowę — „Liczenie powtórzeń” niżej).
 
 ### Plany między sesjami (etap 10)
 
@@ -207,6 +208,59 @@ Sprawdzenie w interfejsie: Start, Włącz kamerę, stań bokiem albo przechyl si
 na ciszę: trener powie „Stań prosto, barki nad biodrami.”. Potem Przerwa: korekty milkną.
 Wyłącz serwis YOLO: panel pokazuje sam podgląd, rozmowa działa.
 
+### Liczenie powtórzeń (etap 05)
+
+Scenariusz ćwiczenia w `yolo-backend/scenarios/` mówi wszystko, czego potrzeba kamerze:
+
+| Pole | Znaczenie |
+| --- | --- |
+| `exercises` / `patterns` | które ćwiczenia ogląda (lista ćwiczeń wygrywa z wzorcem ruchu) |
+| `view` | `side` albo `front` — skąd kamera ma widzieć ćwiczenie |
+| `rep` | kąt z `rules` (reguła bez `min`/`max` tylko mierzy), pozycja startowa `high`/`low`, progi `low` i `high` |
+
+Na start: `squat` (przysiady, z boku, kąt w kolanie), `pushup` (pompki, z boku, łokieć),
+`overhead_press` (wyciskanie nad głowę, z przodu, łokieć). Nowe ćwiczenie to nowy plik JSON
+i restart serwisu YOLO oraz `npm start` (oba czytają scenariusze przy starcie).
+
+- Zdarzenie `workout` niesie `camera` bieżącego ćwiczenia (w przerwie — następnego), panel
+  przełącza scenariusz YOLO razem z planem (`src/coach/camera-scenarios.js`).
+- Powtórzenie to wyjście z pozycji startowej za drugi próg i powrót (`public/camera/rep-counter.js`);
+  przerwa między progami chroni przed liczeniem wahań, szybszy skok niż 0,6 s to szum.
+  Licznik działa tylko w serii, każda seria od zera; panel pokazuje widok i liczbę.
+- Każda nowa liczba idzie do `POST /api/session/reps`. „Gotowe” bez liczby bierze liczbę
+  z kamery z tej samej serii, a trener mówi „Seria zaliczona, kamera naliczyła 9”;
+  „zrobiłem 9” zawsze wygrywa. Seria z kamery ma w dzienniku `source: "camera"`.
+  Kamera zgaszona w trakcie serii — liczba przepada (byłaby częściowa).
+- Strona zgłasza, czy analiza działa (`POST /api/session/camera`). Tylko wtedy, przy ćwiczeniu
+  z innym widokiem niż poprzednie, trener mówi „Ustaw kamerę z boku / z przodu…”: w zapowiedzi
+  przerwy przed nowym ćwiczeniem albo przed pierwszą serią.
+- **Bramki pozycji** (`rep.gates`): reguły mówiące, że to w ogóle to ćwiczenie — pompka tylko
+  z tułowiem w podporze (`incline` bark→biodro < 35°), wyciskanie z dłońmi nie niżej niż barki,
+  przysiad z tułowiem nie poziomo. Klatka z niespełnioną albo niewidoczną bramką nie liczy się
+  (łokieć zgina się tak samo w wyciskaniu jak w pompce), a trener mówi jej `correction`
+  („To nie wygląda na pompkę…”) — tylko w trakcie serii, w przerwie milczy (`cues.js`).
+- Serii kamera sama nie kończy — liczy i podpowiada; koniec serii to dalej „gotowe”.
+- Trener liczy na głos każde nowe powtórzenie z kamery („jeden”, „dwa”…), tylko gdy nikt
+  nie mówi (spóźniona liczba w środku zdania przeszkadza bardziej niż pominięta). Liczby nie
+  trafiają do historii rozmowy modelu (`speakText(…, { remember: false })` w silniku):
+  historia ma 12 wiadomości, jedna seria by ją wypchnęła.
+
+Sprawdzenie: przysiad w planie, Włącz kamerę, po rozgrzewce trener prosi o kamerę z boku;
+zrób kilka przysiadów — panel liczy; „gotowe” — trener podaje liczbę z kamery.
+
+**Test kamery bez sesji:** http://127.0.0.1:3001/app/#test-kamery (link „Test kamery (bez sesji)”
+na stronie głównej, gdy sesja nie trwa). Bez awatara i modelu, więc bez kosztów: wybór ćwiczenia
+z listy scenariuszy (`/api/config` → `camera.scenarios`), od razu „seria”, licznik, a pod nim kąt
+na żywo, najniższy i najwyższy w serii oraz progi; „Nowa seria” zeruje. Do strojenia progów:
+dół ruchu musi schodzić poniżej progu „dół”, pozycja startowa — powyżej „góra” (wyciskanie
+odwrotnie). Po zmianie `rep` w JSON wystarczy restart `npm start`.
+
+**Test kamery z trenerem:** na stronie głównej „Test kamery z trenerem: [ćwiczenie] Start testu”
+(sesja `camera_test`). Model tylko się wita; od razu seria wybranego ćwiczenia (przysiad bez
+obciążenia, pompki, wyciskanie hantlami siedząc — najmniej sprzętu), bez planu, rozgrzewki,
+kontuzji z bazy i bez zapisu w dzienniku (test zafałszowałby progresję i regenerację). Trener prosi
+o ustawienie kamery, liczy na głos, po „gotowe” mówi wynik z kamery; panel pokazuje kąty.
+
 ## Sprawdzenie
 
 ```bash
@@ -266,7 +320,9 @@ sprawdź w interfejsie według instrukcji powyżej.
   i przerwy, podgląd na żywo, zmiany w locie, ból i kontuzje oraz dziennik w Supabase.
 - [x] 12: wywiad i plan na cały tydzień według zasad trenerskich, kalendarz, trening z dnia
   planu, warianty A/B, sygnały w trakcie (ciężar, serie, przerwy, zamiana na sprzęt).
-- [ ] 05: fazy ruchu i liczenie powtórzeń.
+- [ ] 05: fazy ruchu i liczenie powtórzeń — liczenie, widok kamery i zapowiedź gotowe
+  (przysiad, pompka, wyciskanie); zostaje strojenie progów na żywo i więcej ćwiczeń;
+  potem sprawdzanie, czy kamera stoi z właściwej strony.
 - [ ] 06: scenariusze ćwiczeń i korekty techniki.
 
 Model rozmowy nadal nie widzi obrazu ani pomiarów; korekty z kamery wypowiada aplikacja.

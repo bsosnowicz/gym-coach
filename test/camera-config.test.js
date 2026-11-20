@@ -21,7 +21,12 @@ async function get(path) {
 test("Kamera: /api/config podaje adres YOLO, nagłówki wpuszczają kamerę i serwis YOLO", async () => {
   const { res, body } = await get("/api/config");
 
-  assert.deepEqual(body, { camera: { yoloUrl: "ws://localhost:8000/ws/analyze" } });
+  assert.equal(body.camera.yoloUrl, "ws://localhost:8000/ws/analyze");
+  assert.deepEqual(body.camera.scenarios.map((item) => item.scenario), ["overhead_press", "pushup", "squat"]);
+  assert.deepEqual(body.camera.scenarios[2], {
+    scenario: "squat", label: "Przysiad", angle: "kąt w kolanie", view: "side",
+    rep: { rule: "knee_angle", start: "high", low: 110, high: 155, gates: ["lying_down"] },
+  });
   assert.match(res.headers.get("permissions-policy"), /camera=\(self\)/);
   assert.match(res.headers.get("permissions-policy"), /microphone=\(self\)/);
   assert.match(res.headers.get("content-security-policy"), /connect-src 'self' https: wss: ws:\/\/localhost:8000(;|$)/);

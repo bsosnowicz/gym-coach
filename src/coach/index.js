@@ -13,11 +13,12 @@ const { breakOverIntent } = require("./end-guard");
 const { buildWeekPlan, describeWeek, planFromDay, dayFor, weekdayOf, describeToday, weekContext } = require("./week-plan");
 const { WEEKDAY_NAMES } = require("./programming");
 const {
-  BODY_PART_NAMES, PAIN_RULES, WEEK_PROMPT, SYSTEM_PROMPT,
+  BODY_PART_NAMES, PAIN_RULES, WEEK_PROMPT, SYSTEM_PROMPT, CAMERA_TEST_PROMPT,
   planContext, injuryContext, lastWorkoutContext, describeProfile,
 } = require("./prompts");
 const { yesIntent, noIntent, READY_WORDS, STT_HALLUCINATIONS, COURTESY_WORDS } = require("./speech-words");
 const { createMarkers, parsePlanMarker } = require("./markers");
+const { loadCameraScenarios, cameraFor, testExercise, VIEW_NOTES, countWord } = require("./camera-scenarios");
 
 const severityRank = (severity) => SEVERITIES.indexOf(severity);
 
@@ -38,14 +39,44 @@ const unrefTimer = (fn, ms) => {
 // injuries: src/coach/injury-store.js, or null without Supabase (the session still adapts).
 // workoutLog: src/coach/workout-log.js, or null without Supabase.
 // plans: src/coach/plan-store.js (profile and weekly plans), or null without Supabase.
+// cameraScenarios: src/coach/camera-scenarios.js — which exercise the camera can count.
 function createCoach({
   voiceId, language = "pl", catalog = buildCatalog(), engine = require("../engine"),
   injuries: injuryStore = null, workoutLog = null, plans: planStore = null,
+  cameraScenarios = loadCameraScenarios(),
 }) {
+  // The camera scenario of the exercise in progress (or next, during a rest), or null.
+  const cameraOf = (item) => (item ? cameraFor(catalog.get(item.id), cameraScenarios) : null);
+
   // The workout as the page shows it; sent on every change and to a page that (re)joins.
+  // camera: what the page's camera watches and counts now.
   function workoutEvent(session) {
     const { plan, runner } = session.coachState;
-    return { stage: "workout", workout: plan ? { plan, progress: runner.snapshot() } : null };
+    if (!plan) return { stage: "workout", workout: null };
+    const progress = runner.snapshot();
+    const camera = progress.phase === "done" ? null : cameraOf(plan.exercises[progress.exerciseIndex]);
+    return { stage: "workout", workout: { plan, progress, camera } };
+  }
+
+  // Where the camera goes for a new exercise, said once per change of side and
+  // only while the camera is on; "" otherwise.
+  function cameraNote(session, item) {
+    const { camera } = session.coachState;
+    const target = cameraOf(item);
+    if (!camera.on || !target || camera.view === target.view) return "";
+    camera.view = target.view;
+    engine.record(session, "camera.view_asked", { view: target.view, id: item.id });
+    return VIEW_NOTES[target.view];
+  }
+
+  // A bare "gotowe" during a set takes the reps the camera counted in this very
+  // set; a number the user said always wins.
+  function withCameraReps(state, intent) {
+    const { runner, cameraReps } = state;
+    if (intent.reps != null || runner.progress.phase !== "set" || !cameraReps) return intent;
+    const { exerciseIndex, setIndex } = runner.progress;
+    if (cameraReps.exerciseIndex !== exerciseIndex || cameraReps.setIndex !== setIndex || cameraReps.count < 1) return intent;
+    return { ...intent, reps: cameraReps.count, source: "camera" };
   }
 
   // The weekly plan for the calendar; sent when it changes and to a page that (re)joins.
@@ -337,6 +368,27 @@ function createCoach({
     }
   }
 
+  // The camera test: one exercise of the chosen scenario, three sets of ten,
+  // straight into the first set; nothing goes to the journal (saveLog).
+  const CAMERA_TEST_PROFILE = { goal: "general", level: "intermediate", equipment: "gym", minutes: 10, focus: null };
+  function startCameraTest(session) {
+    const state = session.coachState;
+    const item = cameraScenarios.find((scenario) => scenario.scenario === state.testScenario);
+    const exercise = item && testExercise(item, catalog);
+    if (!exercise) {
+      engine.record(session, "camera_test.unknown", { scenario: state.testScenario });
+      engine.speakText(session, "Nie mam ćwiczenia do tego testu kamery. Zakończ sesję i wybierz inne.");
+      return;
+    }
+    state.plan = {
+      profile: CAMERA_TEST_PROFILE, avoid: [], warmup: null,
+      exercises: [toPlanItem(exercise, { sets: 3, reps: 10, restS: 60 }, CAMERA_TEST_PROFILE.level)],
+    };
+    state.runner = startRunner(session, state.plan);
+    engine.record(session, "camera_test.started", { scenario: item.scenario, id: exercise.id });
+    state.runner.advance();
+  }
+
   function buildPlan(session, profile) {
     const state = session.coachState;
     state.plan = planWorkout(catalog, profile, {
@@ -358,13 +410,15 @@ function createCoach({
       },
       canSpeakNow: () => !cueBlockedBy(session),
       finishNote: () => session.coachState.variantNote || "",
+      cameraNote: (item) => cameraNote(session, item),
       setTimer: unrefTimer,
     });
   }
   // Every change the page sees also goes to the journal (one row per session, upserted).
   function saveLog(session) {
-    const { plan, runner, changes, startedAt } = session.coachState;
-    if (!workoutLog || !plan) return;
+    const { plan, runner, changes, startedAt, mode } = session.coachState;
+    // A camera test would skew progression, variety and recovery, all read from the journal.
+    if (!workoutLog || !plan || mode === "camera_test") return;
     workoutLog.save({
       sessionId: session.id,
       startedAt,
@@ -390,7 +444,9 @@ function createCoach({
       const injuries = (setup.injuries || []).filter((injury) => BODY_PARTS.includes(injury.body_part));
       return {
         // interview: getting to know the user and building the weekly plan; training: a workout.
-        mode: setup.mode === "interview" ? "interview" : "training",
+        // camera_test: one exercise to check the camera's rep count (setup.scenario).
+        mode: ["interview", "camera_test"].includes(setup.mode) ? setup.mode : "training",
+        testScenario: setup.scenario || null,
         profile: setup.profile || null,
         weekPlan: setup.weekPlan || null,
         // The active plan as the database has it (with its id): the base for variants.
@@ -402,6 +458,10 @@ function createCoach({
         history: setup.history || [],
         lastWorkout: setup.history?.[0] || null,
         startedAt: new Date().toISOString(),
+        // on: the page's camera is analysing (POST /api/session/camera); view: the side last asked for.
+        camera: { on: false, view: null },
+        // { exerciseIndex, setIndex, count }: reps the camera counted in a set (POST /api/session/reps).
+        cameraReps: null,
         changes: [],
         // "other" maps to no exercise: the model knows about it, the filter cannot use it.
         avoid: injuries.filter((injury) => injury.body_part !== "other")
@@ -420,6 +480,15 @@ function createCoach({
 
     buildMessages(session, { userText }) {
       const { plan, runner, injuries, lastWorkout, mode, profile, weekPlan } = session.coachState;
+      if (mode === "camera_test") {
+        const messages = [
+          { role: "system", content: CAMERA_TEST_PROMPT },
+          ...(plan ? [{ role: "system", content: planContext(plan, runner.progress) }] : []),
+          ...session.history,
+        ];
+        if (userText === null) messages.push({ role: "user", content: "[EVENT: session_start]" });
+        return messages;
+      }
       if (mode === "interview") {
         const messages = [
           { role: "system", content: `${INTERVIEW_PROMPT}\n${PAIN_RULES}` },
@@ -487,10 +556,40 @@ function createCoach({
       const ready = (runner?.progress.phase === "ready_set" && (yesIntent(userText) || READY_WORDS.test(normalizeWords(userText).join(" "))))
         // "Koniec przerwy" during a rest between sets: the next set, not the end of the session.
         || (["rest", "ready_set"].includes(runner?.progress.phase) && breakOverIntent(userText));
-      const intent = runner && (advanceIntent(userText) || (ready ? { reps: null, kg: null } : null));
+      const said = runner && (advanceIntent(userText) || (ready ? { reps: null, kg: null } : null));
+      const intent = said && withCameraReps(state, said);
       if (!intent || !runner.advance(intent)) return undefined;
       engine.record(session, "workout.advance", { text: userText, reps: intent.reps });
       return { handled: true };
+    },
+
+    // The page's camera started or stopped analysing; a camera switched on again
+    // hears where to stand at the next new exercise. A count cut off by the
+    // camera going out is partial: it is dropped, not taken as the set.
+    cameraSwitched(session, on) {
+      const state = session.coachState;
+      const { camera } = state;
+      if (camera.on === on) return;
+      camera.on = on;
+      camera.view = null;
+      if (!on) state.cameraReps = null;
+      engine.record(session, on ? "camera.on" : "camera.off", {});
+    },
+
+    // Reps the page counted in a set; kept only for the set in progress.
+    // A new rep is counted aloud when nobody talks; a late number in the middle
+    // of a sentence would be worse than a skipped one. Not kept in the model's
+    // history: twelve messages there would be gone after one set.
+    cameraReps(session, { count, exerciseIndex, setIndex }) {
+      const state = session.coachState;
+      const progress = state.runner?.progress;
+      if (!progress || progress.phase !== "set" || progress.exerciseIndex !== exerciseIndex || progress.setIndex !== setIndex) {
+        return false;
+      }
+      const before = state.cameraReps?.exerciseIndex === exerciseIndex && state.cameraReps.setIndex === setIndex ? state.cameraReps.count : 0;
+      state.cameraReps = { exerciseIndex, setIndex, count };
+      if (count > before && !cueBlockedBy(session)) engine.speakText(session, countWord(count), { remember: false });
+      return true;
     },
 
     onPause: (session) => session.coachState.runner?.pause(),
@@ -514,6 +613,11 @@ function createCoach({
     // The plan is read out with fixed text right after the reply that carried the marker.
     async afterTurn(session, { userText } = {}) {
       const state = session.coachState;
+      // After the greeting the camera test goes straight into its first set.
+      if (state.mode === "camera_test" && !state.plan) {
+        startCameraTest(session);
+        return;
+      }
       if (state.painResolved) {
         const part = state.painResolved;
         state.painResolved = null;
@@ -553,7 +657,7 @@ function createCoach({
         return;
       }
       if (state.advanceAfterTurn) {
-        const result = state.advanceAfterTurn;
+        const result = withCameraReps(state, state.advanceAfterTurn);
         state.advanceAfterTurn = false;
         state.runner.advance(result);
         return;

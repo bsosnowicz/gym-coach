@@ -33,6 +33,7 @@ const { createBrowserVoice } = require("./src/adapters/avatar/browser-voice");
 const { createCoach, holdPainDuringBreak } = require("./src/coach");
 const { guardSessionEnd } = require("./src/coach/end-guard");
 const { createCueSpeaker } = require("./src/coach/cues");
+const { loadCameraScenarios } = require("./src/coach/camera-scenarios");
 const { createInjuryStore } = require("./src/coach/injury-store");
 const { createWorkoutLog } = require("./src/coach/workout-log");
 const { createPlanStore } = require("./src/coach/plan-store");
@@ -129,7 +130,14 @@ const sttRateLimit = createFixedWindowRateLimiter({ limit: 60, windowMs: 60000 }
 const turnRateLimit = createFixedWindowRateLimiter({ limit: 60, windowMs: 60000 });
 const reportRateLimit = createFixedWindowRateLimiter({ limit: 120, windowMs: 60000 });
 const cueRateLimit = createFixedWindowRateLimiter({ limit: 30, windowMs: 60000 });
+// One request per counted rep and per camera switch: a fast set is ~1 rep a second.
+const cameraRateLimit = createFixedWindowRateLimiter({ limit: 180, windowMs: 60000 });
 const cues = createCueSpeaker({ speakText: engine.speakText, record: engine.record });
+
+function requireCount(value, label, max) {
+  if (!Number.isInteger(value) || value < 0 || value > max) throw new HttpError(`Pole "${label}" musi być liczbą 0–${max}.`, 400);
+  return value;
+}
 
 function requireShortText(value, label, maxLength) {
   if (typeof value !== "string" || !value.trim() || value.length > maxLength) {
@@ -153,8 +161,10 @@ function closeAbandonedSession(session) {
 
 const ROUTES = {
   // What the page needs before a session; camera: null keeps the camera module unloaded.
+  // scenarios: the exercises the camera counts, for the camera test page (#test-kamery).
   "GET /api/config": async (_req, res) => {
-    sendJson(res, 200, { camera: YOLO_POSE_WS_URL ? { yoloUrl: YOLO_POSE_WS_URL } : null });
+    const scenarios = loadCameraScenarios().map(({ scenario, label, angle, view, rep }) => ({ scenario, label, angle, view, rep }));
+    sendJson(res, 200, { camera: YOLO_POSE_WS_URL ? { yoloUrl: YOLO_POSE_WS_URL, scenarios } : null });
   },
 
   // The weekly plan for the calendar before any session; null without Supabase or a plan.
@@ -176,6 +186,12 @@ const ROUTES = {
       // Read before the greeting, so the plan and the first question already know them.
       setup: await (async () => {
         const body = await readJsonBody(req).catch(() => ({}));
+        // The camera test: one exercise, nothing read from or written to the database.
+        if (body?.mode === "camera_test") {
+          const scenario = requireShortText(body.scenario, "scenario", 64);
+          if (!loadCameraScenarios().some((item) => item.scenario === scenario)) throw new HttpError(`Nieznane ćwiczenie kamery: ${scenario}.`, 400);
+          return { mode: "camera_test", scenario };
+        }
         const [active, history, profile, weekPlan] = await Promise.all([
           injuries?.active() ?? [], workoutLog?.recent() ?? [], plans?.profile() ?? null, plans?.activePlan() ?? null,
         ]);
@@ -306,6 +322,28 @@ const ROUTES = {
       deviation: requireShortText(body.deviation, "deviation", 64),
     });
     sendJson(res, 200, result);
+  },
+
+  // The page's camera started or stopped analysing: the coach asks where to put it.
+  "POST /api/session/camera": async (req, res, user) => {
+    cameraRateLimit(user.id);
+    const body = await readJsonBody(req);
+    const session = ownedSession(body.sessionId, user);
+    coach.cameraSwitched(session, body.on === true);
+    sendJson(res, 200, { ok: true });
+  },
+
+  // Reps the camera counted in the set in progress; a bare "gotowe" takes them.
+  "POST /api/session/reps": async (req, res, user) => {
+    cameraRateLimit(user.id);
+    const body = await readJsonBody(req);
+    const session = ownedSession(body.sessionId, user);
+    const kept = coach.cameraReps(session, {
+      count: requireCount(body.count, "count", 200),
+      exerciseIndex: requireCount(body.exerciseIndex, "exerciseIndex", 100),
+      setIndex: requireCount(body.setIndex, "setIndex", 20),
+    });
+    sendJson(res, 200, { ok: true, kept });
   },
 
   "POST /api/session/handover-ready": async (req, res, user) => {

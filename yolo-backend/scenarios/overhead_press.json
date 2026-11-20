@@ -1,0 +1,54 @@
+{
+  "id": "overhead_press",
+  "label": "Wyciskanie nad głowę",
+  "description": "Wyciskanie nad głowę, kamera z przodu. Powtórzenie liczy kąt w łokciu: ciężar przy barkach → ręce proste → przy barkach.",
+  "view": "front",
+  "patterns": [
+    "vertical_push"
+  ],
+  "rep": {
+    "rule": "elbow_angle",
+    "start": "low",
+    "low": 110,
+    "high": 150,
+    "gates": [
+      "wrists_below_shoulders"
+    ]
+  },
+  "rules": [
+    {
+      "id": "elbow_angle",
+      "label": "kąt w łokciu",
+      "type": "angle",
+      "points": {
+        "left": [
+          "left_shoulder",
+          "left_elbow",
+          "left_wrist"
+        ],
+        "right": [
+          "right_shoulder",
+          "right_elbow",
+          "right_wrist"
+        ]
+      }
+    },
+    {
+      "id": "wrists_below_shoulders",
+      "label": "dłonie poniżej barków",
+      "correction": "To nie wygląda na wyciskanie nad głowę: ciężar przy barkach, przodem do kamery.",
+      "type": "vertical_delta",
+      "points": {
+        "left": [
+          "left_shoulder",
+          "left_wrist"
+        ],
+        "right": [
+          "right_shoulder",
+          "right_wrist"
+        ]
+      },
+      "max": 0.08
+    }
+  ]
+}

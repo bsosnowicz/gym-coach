@@ -8,8 +8,8 @@
 // sets is timed here, and saying "gotowe" during a rest skips the rest of it.
 // When the rest runs out the coach asks whether the user is ready (ready_set)
 // and the set starts on a "tak" — the user may still be drinking water.
-// Without a camera this is the rep counter: the user says when the set is
-// done ("zrobiłem 8" keeps the 8). Stage 05 can drive advance() from YOLO.
+// The user says when the set is done ("gotowe", "zrobiłem 8" keeps the 8);
+// with the camera on, a bare "gotowe" takes the reps it counted (src/coach/index.js).
 
 const { normalizeWords } = require("../engine/words");
 const { WEIGHT_STEP_KG } = require("./progression");
@@ -99,8 +99,9 @@ const SAY = {
   adjustUp: (done, item, kg) => `${done} powtórzeń to sporo. ${kg ? `Zwiększyć do ${kgText(kg)}` : "Zwiększyć ciężar"} na następną serię?`,
   adjusted: (kg, up) => (kg ? `Dobrze, następna seria na ${kgText(kg)}.` : `Dobrze, weź ${up ? "więcej" : "lżej"} i po serii powiedz, ile było.`),
   kept: (kg) => (kg ? `Dobrze, zostajemy przy ${kgText(kg)}.` : "Dobrze, zostajemy przy tym ciężarze."),
-  rest: (item, seconds, next, question = "") =>
-    `Seria zaliczona.${question ? ` ${question}` : ""} Przerwa ${restText(seconds)}${next ? `, potem ${next}` : ""}.`,
+  // counted: reps the camera counted, said back so a miscount can be heard.
+  rest: (item, seconds, next, question = "", counted = null) =>
+    `Seria zaliczona${counted ? `, kamera naliczyła ${counted}` : ""}.${question ? ` ${question}` : ""} Przerwa ${restText(seconds)}${next ? `, potem ${next}` : ""}.`,
   nextSet: (item, setIndex) =>
     `Koniec przerwy. ${item.name}, seria ${ORDINAL[setIndex] || setIndex + 1} z ${item.sets}, ${target(item)}.`,
   // Rest over: what comes next, and a question; the set starts on the answer.
@@ -131,9 +132,10 @@ const REST_STEP_S = 30;
 // deps: speak(text), publish(), record(type, payload), canSpeakNow() — false
 // while the coach or the user is talking; finishNote() — said after the
 // summary (a saved plan variant), so a second line does not cut it off;
+// cameraNote(item) — where to put the camera for a new exercise, or "";
 // timers and clock for the tests.
 function createWorkoutRunner(plan, {
-  speak, publish, record = () => {}, canSpeakNow = () => true, finishNote = () => "",
+  speak, publish, record = () => {}, canSpeakNow = () => true, finishNote = () => "", cameraNote = () => "",
   now = () => Date.now(), setTimer = setTimeout, clearTimer = clearTimeout,
 }) {
   const progress = { phase: "ready", exerciseIndex: 0, setIndex: 0, restEndsAt: null, completed: [] };
@@ -144,6 +146,8 @@ function createWorkoutRunner(plan, {
 
   const current = () => plan.exercises[progress.exerciseIndex];
   const withNote = (text) => [text, finishNote()].filter(Boolean).join(" ");
+  // A new exercise starts with where the camera goes, before its first set.
+  const firstSet = () => [cameraNote(current()), SAY.firstSet(current(), progress.exerciseIndex + 1, plan.exercises.length)].filter(Boolean).join(" ");
 
   // A step announcement waits until nobody talks (up to a limit), so the rest
   // timer does not cut off the coach answering a question.
@@ -181,9 +185,7 @@ function createWorkoutRunner(plan, {
     restTimer = null;
     restRemainingMs = null;
     const item = current();
-    say(progress.setIndex === 0
-      ? SAY.firstSet(item, progress.exerciseIndex + 1, plan.exercises.length)
-      : SAY.nextSet(item, progress.setIndex));
+    say(progress.setIndex === 0 ? firstSet() : SAY.nextSet(item, progress.setIndex));
     startSet();
   }
 
@@ -196,7 +198,8 @@ function createWorkoutRunner(plan, {
     restRemainingMs = null;
     progress.phase = "ready_set";
     progress.restEndsAt = null;
-    say(SAY.restOver(current(), progress.setIndex, progress.exerciseIndex + 1, plan.exercises.length));
+    const note = progress.setIndex === 0 ? cameraNote(current()) : "";
+    say([note, SAY.restOver(current(), progress.setIndex, progress.exerciseIndex + 1, plan.exercises.length)].filter(Boolean).join(" "));
     reminderTimer = setTimer(() => {
       reminderTimer = null;
       if (progress.phase === "ready_set") say(SAY.readyReminder());
@@ -224,13 +227,18 @@ function createWorkoutRunner(plan, {
     return { up, kg: next, current: kg, text: up ? SAY.adjustUp(reps, item, next) : SAY.adjustDown(reps, item, next) };
   }
 
-  function finishSet(reps, kg) {
+  // source: "camera" when the reps came from the camera, not from what the user said.
+  function finishSet(reps, kg, source = null) {
     const item = current();
     // No weight said: the one planned (or said earlier) — the journal needs it for progression.
     const weight = kg ?? item.kg ?? null;
     if (kg) item.kg = kg;
-    progress.completed.push({ id: item.id, set: progress.setIndex + 1, reps: reps ?? item.reps ?? null, seconds: item.seconds ?? null, kg: weight });
-    record("workout.set_done", { id: item.id, set: progress.setIndex + 1, reps: reps ?? null, kg: weight });
+    const counted = source === "camera" && reps != null ? reps : null;
+    progress.completed.push({
+      id: item.id, set: progress.setIndex + 1, reps: reps ?? item.reps ?? null, seconds: item.seconds ?? null, kg: weight,
+      ...(counted ? { source: "camera" } : {}),
+    });
+    record("workout.set_done", { id: item.id, set: progress.setIndex + 1, reps: reps ?? null, kg: weight, ...(counted ? { source: "camera" } : {}) });
     const lastSet = progress.setIndex + 1 >= item.sets;
     // Only between sets of the same exercise; across sessions progression decides.
     const question = lastSet ? null : weightQuestion(item, reps, weight);
@@ -248,7 +256,8 @@ function createWorkoutRunner(plan, {
     } else {
       progress.setIndex += 1;
     }
-    say(SAY.rest(item, item.restS, lastSet ? current().name : null, question?.text));
+    say([SAY.rest(item, item.restS, lastSet ? current().name : null, question?.text, counted), lastSet ? cameraNote(current()) : ""]
+      .filter(Boolean).join(" "));
     startRest(item.restS * 1000);
   }
 
@@ -276,7 +285,7 @@ function createWorkoutRunner(plan, {
       publish();
       return;
     }
-    say(`${lead}${how === "skip" ? SAY.skipped(item) : SAY.shortened(item)} ${SAY.firstSet(current(), progress.exerciseIndex + 1, plan.exercises.length)}`);
+    say(`${lead}${how === "skip" ? SAY.skipped(item) : SAY.shortened(item)} ${firstSet()}`);
     startSet();
   }
 
@@ -405,10 +414,17 @@ function createWorkoutRunner(plan, {
       return true;
     },
 
-    // The user is done with the current step; reps: what they said ("zrobiłem 8").
+    // The user is done with the current step; reps: what they said ("zrobiłem 8")
+    // or what the camera counted (source: "camera").
     // Returns false when there is nothing to move on from (no plan step, done).
-    advance({ reps = null, kg = null } = {}) {
+    advance({ reps = null, kg = null, source = null } = {}) {
       if (progress.phase === "ready") {
+        // A plan without a warm-up (warmup: null, the camera test) starts with its first set.
+        if (plan.warmup === null) {
+          say(firstSet());
+          startSet();
+          return true;
+        }
         progress.phase = "warmup";
         record("workout.warmup", {});
         say(SAY.warmup());
@@ -416,12 +432,12 @@ function createWorkoutRunner(plan, {
         return true;
       }
       if (progress.phase === "warmup") {
-        say(SAY.firstSet(current(), 1, plan.exercises.length));
+        say(firstSet());
         startSet();
         return true;
       }
       if (progress.phase === "set") {
-        finishSet(reps, kg);
+        finishSet(reps, kg, source);
         return true;
       }
       if (progress.phase === "rest") {

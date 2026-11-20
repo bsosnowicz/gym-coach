@@ -87,6 +87,17 @@ export function report(sessionId, action, details = {}) {
 
 // A posture correction seen on the camera (public/camera/correction-loop.js).
 // The server decides whether it is spoken now: { spoken, reason? }.
+// The camera's state for the coach (where to stand, reps of a set). Not awaited:
+// a lost one only means the user says the reps, as without a camera.
+export function sendCamera(sessionId, on) {
+  postJson("/api/session/camera", { sessionId, on })
+    .catch((e) => log(`(Kamera: stan nie doszedł do serwera: ${e.message})`));
+}
+export function sendReps(sessionId, { count, exerciseIndex, setIndex }) {
+  postJson("/api/session/reps", { sessionId, count, exerciseIndex, setIndex })
+    .catch((e) => log(`(Kamera: powtórzenia nie doszły do serwera: ${e.message})`));
+}
+
 export async function sendCue(sessionId, { scenario, deviation }) {
   const res = await postJson("/api/session/cue", { sessionId, scenario, deviation });
   const data = await parseJson(res);

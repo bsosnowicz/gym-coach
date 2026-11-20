@@ -10,7 +10,7 @@ z szablonem; domena trenera mieści się w `src/coach/`.
 
 Trener rozmawia o celu treningu, doświadczeniu i sprzęcie (etap 04). Od etapu 03
 opcjonalna kamera wysyła klatki do `yolo-backend`, a uwagi ze scenariusza `standing`
-wypowiada awatar jako krótkie korekty. Fazy ruchu i liczenie powtórzeń to etap 05.
+wypowiada awatar jako krótkie korekty. Etap 05 liczy powtórzenia z kamery (przysiad, pompka, wyciskanie) i prosi o kamerę z boku lub z przodu.
 Repo: `bsosnowicz/gym-coach`, katalog `~/projects/gym-coach`.
 
 ## Uruchomienie i testy
@@ -25,7 +25,7 @@ Repo: `bsosnowicz/gym-coach`, katalog `~/projects/gym-coach`.
 - `src/adapters/{llm,tts,stt,avatar}/` — dostawcy, silnik zna tylko ich kontrakty (`src/engine/ports.js`).
 - `src/coach/` — domena projektu: `index.js` (sesja trenera: dwa tryby rozmowy `interview` i `training`, reakcje po turze, ból, warianty planu), `prompts.js` (prompty systemowe i kontekst dla modelu), `markers.js` (znaczniki `[PROFILE]`, `[TODAY]`, `[NEW_PLAN]`, `[VARIANT]`, `[PLAN]`, `[NEXT]`, `[SWAP]`, `[LIGHTER]`/`[HEAVIER]`, `[MORE_SETS]`, `[REST]`, `[SKIP]`, `[FEWER_SETS]`, `[NO_GEAR]`, `[PAIN]` — tylko zapisują intencję w `coachState`), `speech-words.js` (krótkie „tak”/„nie”/„gotowy” w kodzie, halucynacje STT, słowa grzecznościowe), `end-guard.js` („koniec przerwy” to nie koniec sesji), `exercises.js` (katalog: `data/exercises.json` z free-exercise-db + nakładka `data/exercises-pl.json`), `planner.js` (plan jednego treningu, różnorodność A/B, focus na partię mięśni), `programming.js` (zasady trenerskie: split, 48 h, intensywność, objętość, deload), `week-plan.js` (plan tygodnia, dzień na dziś, `planFromDay`), `interview.js` (wywiad i znacznik `[PROFILE]`), `plan-store.js` (`user_profiles`, `training_plans` z wariantami), `progression.js` (progresja z dziennika), `schedule.js` (stały schemat, regeneracja 48 h), `workout.js` (serie, przerwy, zmiany, wynik „8 na 60 kilo”), `body-mentions.js` (wzmianki o kontuzjach bez modelu), `holdPainDuringBreak` w `index.js` (ból zgłoszony w przerwie), `injury-store.js` i `workout-log.js` (Supabase przez `supabase.js`), `cues.js` (korekty z kamery). Zasada: model tylko rozpoznaje intencję znacznikiem, decyzję i tekst zapowiedzi daje kod.
 - `web/src/` — strona React: `session/useSession.js` (sesja bez wyglądu, `start(setup)`, `onEvent` na własne zdarzenia SSE), `session/texts.js` (wszystkie napisy), `components/` (scena z wideo, nakładka przerwy, okno zakończenia, przyciski, transkrypcja, dziennik), `screens/SessionScreen.jsx` (złożona strona).
-- `public/camera/` + `web/src/camera/CameraPanel.jsx` — opcjonalna kamera (etap 03): strumień do YOLO, szkielet, pętla korekty; `src/coach/cues.js` — trasa korekty i bramka; `yolo-backend/` — serwis Python ze scenariuszami.
+- `public/camera/` + `web/src/camera/CameraPanel.jsx` — opcjonalna kamera (etap 03): strumień do YOLO, szkielet, pętla korekty; `src/coach/cues.js` — trasa korekty i bramka; `yolo-backend/` — serwis Python ze scenariuszami. Etap 05: `src/coach/camera-scenarios.js` (ćwiczenie → scenariusz, widok `side`/`front`, kąt powtórzenia — wszystko z plików scenariuszy), `public/camera/rep-counter.js` (powtórzenia z kąta, histereza), trasy `/api/session/camera` i `/api/session/reps`; „gotowe” bez liczby bierze liczbę z kamery (`withCameraReps` w `index.js`).
 - `public/` — moduły przeglądarki bez Reacta, wspólne z language-coach: `session/lite-adapter.js` (LiveKit, SSE, mikrofon), `stt.js`, `api.js`, `ui/log.js`, `styles.css`.
 - Tryb bez awatara (`COACH_AVATAR=voice`, z language-coach): `src/adapters/avatar/browser-voice.js`, `public/session/{voice-player,voice-level,visemes}.js`, maskotka i tła `public/ui/{mascots,scenes}.js` + `public/css/{mascot,scene}.css` (tymczasowo z language-coach, docelowo z Claude Design), `web/src/components/Mascot.jsx` (`CoachStage`), stan maskotki w `SessionScreen.jsx`.
 
@@ -46,6 +46,7 @@ Repo: `bsosnowicz/gym-coach`, katalog `~/projects/gym-coach`.
 
 ## Lekcje (fakty, które kosztowały czas)
 
+- **Silnik różni się od `avatar-engine`** (szablon, `~/projects/avatar-engine`): tryb głosowy, podmiana awatara i `speakText(…, { remember: false })` (etap 05, liczenie na głos) są tylko tutaj. Przy synchronizacji szablonu przenieś je stąd do niego.
 - **Wideo awatara nie może się odmontować**: element `<video>` i adapter żyją przez całą sesję; widoki tylko się ukrywa (zerwany strumień WebRTC = koniec sesji awatara).
 - **React `autoFocus` w `<dialog>` otwieranym przez `showModal()` nie działa** (fokus przy montowaniu, gdy okno zamknięte; brak atrybutu `autofocus` w DOM) — `EndDialog` sam ustawia fokus na „Nie, wracamy” po `showModal()`, inaczej Enter kończył sesję.
 - **Minifikator CSS Vite (Lightning CSS)** z pary `backdrop-filter` + `-webkit-backdrop-filter` zostawia tylko późniejszą — prefiks pisz pierwszy.

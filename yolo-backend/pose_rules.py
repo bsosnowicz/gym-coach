@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from math import acos, hypot
+from math import acos, atan2, degrees, hypot
 from pathlib import Path
 import json
 
@@ -146,6 +146,11 @@ def measure_rule(rule: dict, selected: list[Keypoint]) -> float | None:
         if len(selected) != 2:
             raise ValueError(f"Reguła horizontal_delta wymaga dokładnie 2 punktów: {rule.get('id')}")
         return selected[1].x - selected[0].x
+    if rule_type == "incline":
+        # How steep the segment is, whatever its direction: 0 = level, 90 = upright.
+        if len(selected) != 2:
+            raise ValueError(f"Reguła incline wymaga dokładnie 2 punktów: {rule.get('id')}")
+        return degrees(atan2(abs(selected[1].y - selected[0].y), abs(selected[1].x - selected[0].x)))
     if rule_type == "vertical_delta":
         if len(selected) != 2:
             raise ValueError(f"Reguła vertical_delta wymaga dokładnie 2 punktów: {rule.get('id')}")

@@ -12,7 +12,8 @@ const { fakeLlm, liveSession } = require("./helpers");
 
 test("Korekty: tekst pochodzi z yolo-backend/scenarios, nie z przeglądarki", () => {
   const corrections = loadCorrections();
-  assert.equal(corrections.get("standing").get("shoulders_not_over_hips"), "Stań prosto, barki nad biodrami.");
+  assert.deepEqual(corrections.get("standing").get("shoulders_not_over_hips"), { text: "Stań prosto, barki nad biodrami.", gate: false });
+  assert.equal(corrections.get("pushup").get("not_in_plank").gate, true);
   assert.equal(createCueSpeaker({ speakText }).correctionFor("standing", "made_up"), null);
 });
 
@@ -46,5 +47,17 @@ test("Korekty: w ciszy awatar mówi tekst ze scenariusza, w przerwie milczy", as
   assert.deepEqual(recorded.map((entry) => `${entry.type}:${entry.reason || ""}`), ["camera.cue:", "camera.cue_dropped:paused"]);
 
   assert.deepEqual(await cues.speak(session, { scenario: "standing", deviation: "x" }), { spoken: false, reason: "unknown_deviation" });
+  await endSession(session);
+});
+
+test("Korekty: uwaga z bramki pozycji („to nie wygląda na pompkę”) tylko w trakcie serii, w przerwie milczy", async () => {
+  const { session, events } = await liveSession({ llm: fakeLlm() });
+  const cues = createCueSpeaker({ speakText });
+  const cue = { scenario: "pushup", deviation: "not_in_plank" };
+  session.coachState = { runner: { progress: { phase: "rest" } } };
+  assert.deepEqual(await cues.speak(session, cue), { spoken: false, reason: "not_in_set" });
+  session.coachState.runner.progress.phase = "set";
+  assert.deepEqual(await cues.speak(session, cue), { spoken: true, text: "To nie wygląda na pompkę: ustaw się w podporze, bokiem do kamery." });
+  assert.equal(events.filter((event) => event.stage === "avatar_transcription").length, 1);
   await endSession(session);
 });
