@@ -392,17 +392,19 @@ async function runCoachTurn(session) {
 // needs no turn lock and cannot be starved by a hanging turn.
 // untilSpoken: resolves only once the avatar has said it, for words that must
 // be heard before the session closes.
-async function speakText(session, text, { untilSpoken = false } = {}) {
+// remember: false keeps it out of the model's history — for short, repeated
+// words (a rep counted aloud) that would push the conversation out of it.
+async function speakText(session, text, { untilSpoken = false, remember = true } = {}) {
   if (session.closed || session.handover?.active) return false;
   session.directSpeechInFlight = (session.directSpeechInFlight || 0) + 1;
   try {
-    return await speakDirectText(session, text, { untilSpoken });
+    return await speakDirectText(session, text, { untilSpoken, remember });
   } finally {
     session.directSpeechInFlight -= 1;
   }
 }
 
-async function speakDirectText(session, text, { untilSpoken }) {
+async function speakDirectText(session, text, { untilSpoken, remember }) {
   session.activeTurnAbort?.();
   // Last speaker wins: a newer speakText or the end of the session cancels this one.
   const epoch = (session.speechEpoch += 1);
@@ -430,8 +432,10 @@ async function speakDirectText(session, text, { untilSpoken }) {
     speech.end();
     await spoken;
     if (!stillCurrent()) return false;
-    session.history.push({ role: "assistant", content: text });
-    trimHistory(session);
+    if (remember) {
+      session.history.push({ role: "assistant", content: text });
+      trimHistory(session);
+    }
     record(session, "avatar.transcription", { text });
     session.avatar.startListening();
     emit(session, { stage: "avatar_transcription", text });

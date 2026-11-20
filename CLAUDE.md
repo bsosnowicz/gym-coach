@@ -46,6 +46,7 @@ Repo: `bsosnowicz/gym-coach`, katalog `~/projects/gym-coach`.
 
 ## Lekcje (fakty, które kosztowały czas)
 
+- **Silnik różni się od `avatar-engine`** (szablon, `~/projects/avatar-engine`): tryb głosowy, podmiana awatara i `speakText(…, { remember: false })` (etap 05, liczenie na głos) są tylko tutaj. Przy synchronizacji szablonu przenieś je stąd do niego.
 - **Wideo awatara nie może się odmontować**: element `<video>` i adapter żyją przez całą sesję; widoki tylko się ukrywa (zerwany strumień WebRTC = koniec sesji awatara).
 - **React `autoFocus` w `<dialog>` otwieranym przez `showModal()` nie działa** (fokus przy montowaniu, gdy okno zamknięte; brak atrybutu `autofocus` w DOM) — `EndDialog` sam ustawia fokus na „Nie, wracamy” po `showModal()`, inaczej Enter kończył sesję.
 - **Minifikator CSS Vite (Lightning CSS)** z pary `backdrop-filter` + `-webkit-backdrop-filter` zostawia tylko późniejszą — prefiks pisz pierwszy.

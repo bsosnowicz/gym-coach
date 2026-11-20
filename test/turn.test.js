@@ -442,3 +442,13 @@ test("punkt wznowienia cofa się do ostatniej pauzy w mowie", () => {
   assert.equal(resumeOffset(loudPcm(1000), ms(500)), 0);
   assert.equal(resumeOffset(Buffer.alloc(0), 0), 0);
 });
+
+test("speakText: domyślnie trafia do historii, z remember: false tylko do awatara i transkrypcji", async () => {
+  const { speakText } = require("../src/engine/turn");
+  const { session, events } = await liveSession({ llm: fakeLlm("OK.") });
+  assert.equal(await speakText(session, "Seria zaliczona."), true);
+  assert.equal(await speakText(session, "dwa", { remember: false }), true);
+  assert.deepEqual(session.history, [{ role: "assistant", content: "Seria zaliczona." }]);
+  assert.deepEqual(events.filter((event) => event.stage === "avatar_transcription").map((event) => event.text), ["Seria zaliczona.", "dwa"]);
+  await endSession(session);
+});
