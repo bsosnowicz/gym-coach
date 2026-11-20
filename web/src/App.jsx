@@ -82,7 +82,7 @@ export function App() {
           <WeekCalendar week={plan.week} saving={plan.saving} busy={session.phase !== "idle"} onNewPlan={() => start({ mode: "interview" })} />
           {config?.camera && (
             <Suspense fallback={null}>
-              <CameraPanel config={config.camera} session={session} />
+              <CameraPanel config={config.camera} session={session} workout={workout.workout} />
             </Suspense>
           )}
         </>

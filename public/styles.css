@@ -204,6 +204,8 @@ body {
 .camera-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .camera-device { display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 14px; }
 .camera-device select { font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--text); }
+/* Read from a few metres away, mid-set. */
+.camera-reps { margin: 0; font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
 
 /* Today's workout (web/src/workout/). */
 .workout { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; }

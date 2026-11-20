@@ -9,17 +9,23 @@
 // Deviations become short corrections by the avatar (correction-loop.js):
 // only during a running session, in a pause of the conversation, never
 // during a break, the end window or an avatar handover.
+//
+// Stage 05: the workout says which scenario watches the exercise now
+// (workout.camera from src/coach/camera-scenarios.js). During a set the panel
+// counts reps from that scenario's angle (rep-counter.js) and sends each new
+// count to the server; a bare "gotowe" takes it as the result of the set.
 import { useEffect, useRef, useState } from "react";
-import { sendCue } from "../../../public/api.js";
+import { sendCamera, sendCue, sendReps } from "../../../public/api.js";
 import { log } from "../../../public/ui/log.js";
 import { createCamera, describeCameraError, listCameras } from "../../../public/camera/camera.js";
 import { createCorrectionLoop } from "../../../public/camera/correction-loop.js";
+import { createRepCounter } from "../../../public/camera/rep-counter.js";
 import { clearSkeleton, drawSkeleton } from "../../../public/camera/skeleton.js";
 import { createYoloPoseStream, yoloPoseWsUrl } from "../../../public/camera/yolo-stream.js";
 import { CAMERA_TEXTS } from "./texts.js";
 
-// The neutral scenario of yolo-backend; exercises come with stages 05–06.
-const SCENARIO = "standing";
+// The neutral scenario of yolo-backend, for when no exercise is on camera.
+const DEFAULT_SCENARIO = "standing";
 
 function describeTelemetry(stats) {
   if (stats.type === "connected") return `YOLO: połączono (${stats.model}, ${stats.targetFps} FPS, max ${stats.maxWidth}px).`;
@@ -40,7 +46,8 @@ function describeAnalysis(analysis, t) {
 }
 
 // session: from useSession(); the corrections go into its conversation.
-export default function CameraPanel({ config, session, texts = {} }) {
+// workout: the "workout" event of the coach ({ plan, progress, camera }) or null.
+export default function CameraPanel({ config, session, workout = null, texts = {} }) {
   const t = { ...CAMERA_TEXTS, ...texts };
   const latest = useRef({ t, session });
   latest.current = { t, session };
@@ -56,6 +63,18 @@ export default function CameraPanel({ config, session, texts = {} }) {
   // "off" | "starting" | "on"
   const [state, setState] = useState("off");
   const [message, setMessage] = useState(t.off);
+  // Whether YOLO answers: only then does the coach ask where to put the camera.
+  const [analysing, setAnalysing] = useState(false);
+  const [reps, setReps] = useState(null);
+
+  const target = workout?.camera || null;
+  const scenario = target?.scenario || DEFAULT_SCENARIO;
+  const scenarioRef = useRef(scenario);
+  scenarioRef.current = scenario;
+  const progress = workout?.progress;
+  // One counter per set of an exercise on camera; a new set starts from zero.
+  const setKey = target && progress?.phase === "set" ? `${scenario}:${progress.exerciseIndex}:${progress.setIndex}` : null;
+  const counterRef = useRef(null);
 
   const loopRef = useRef(null);
   if (!loopRef.current) {
@@ -87,6 +106,7 @@ export default function CameraPanel({ config, session, texts = {} }) {
   function stopYolo() {
     yoloRef.current?.stop();
     yoloRef.current = null;
+    setAnalysing(false);
     loopRef.current.reset();
     if (canvasRef.current) clearSkeleton(canvasRef.current.getContext("2d"));
   }
@@ -103,6 +123,34 @@ export default function CameraPanel({ config, session, texts = {} }) {
     };
   }, []);
 
+  // The exercise changed; a connection made later takes scenarioRef by itself.
+  useEffect(() => {
+    if (!yoloRef.current) return;
+    yoloRef.current.setScenario(scenario);
+    loopRef.current.setScenario(scenario);
+  }, [scenario]);
+
+  useEffect(() => {
+    counterRef.current = setKey
+      ? { scenario, exerciseIndex: progress.exerciseIndex, setIndex: progress.setIndex, counter: createRepCounter(target.rep) }
+      : null;
+    setReps(setKey ? 0 : null);
+  }, [setKey]);
+
+  // The coach hears when the analysis starts or stops, also for a session started after the camera.
+  useEffect(() => {
+    if (session.running && session.sessionId()) sendCamera(session.sessionId(), analysing);
+  }, [analysing, session.running]);
+
+  function countReps(analysis) {
+    const current = counterRef.current;
+    if (!current || analysis.scenario !== current.scenario || !current.counter.handle(analysis)) return;
+    const count = current.counter.count;
+    setReps(count);
+    const sessionId = latest.current.session.sessionId();
+    if (sessionId) sendReps(sessionId, { count, exerciseIndex: current.exerciseIndex, setIndex: current.setIndex });
+  }
+
   async function connectYolo(epoch) {
     const ctx = canvasRef.current.getContext("2d");
     setMessage(t.connecting);
@@ -115,6 +163,7 @@ export default function CameraPanel({ config, session, texts = {} }) {
           else clearSkeleton(ctx);
           setMessage(describeAnalysis(analysis, latest.current.t));
           loopRef.current.handleAnalysis(analysis);
+          countReps(analysis);
         },
         onTelemetry: (stats) => {
           const line = describeTelemetry(stats);
@@ -124,6 +173,7 @@ export default function CameraPanel({ config, session, texts = {} }) {
           log(`YOLO: ${error.message}`);
           // Only the final give-up after the reconnect attempts means the analysis is gone.
           if (epoch === epochRef.current && /wznowienie nieudane/.test(error.message)) {
+            setAnalysing(false);
             clearSkeleton(ctx);
             setMessage(latest.current.t.yoloLost);
           }
@@ -134,8 +184,9 @@ export default function CameraPanel({ config, session, texts = {} }) {
         return;
       }
       yoloRef.current = stream;
-      stream.setScenario(SCENARIO);
-      loopRef.current.setScenario(SCENARIO);
+      stream.setScenario(scenarioRef.current);
+      loopRef.current.setScenario(scenarioRef.current);
+      setAnalysing(true);
       setMessage(t.analysing);
     } catch (error) {
       if (epoch !== epochRef.current) return;
@@ -208,6 +259,11 @@ export default function CameraPanel({ config, session, texts = {} }) {
         </label>
       </div>
       <p className="hint camera-status" role="status">{message}</p>
+      {analysing && target && (
+        <p className="camera-reps" aria-live="polite">
+          {`${t.view(target.view)}${reps === null ? "" : ` · ${t.reps(reps)}`}`}
+        </p>
+      )}
     </section>
   );
 }

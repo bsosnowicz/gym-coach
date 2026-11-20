@@ -16,4 +16,6 @@ export const CAMERA_TEXTS = {
   yoloUnavailable: "Analiza sylwetki niedostępna — widzisz sam podgląd, rozmowa działa normalnie.",
   yoloLost: "Połączenie z analizą sylwetki zerwane — widzisz sam podgląd.",
   failed: (message) => `Kamera: ${message}`,
+  view: (view) => (view === "front" ? "Kamera z przodu" : "Kamera z boku"),
+  reps: (count) => `powtórzenia: ${count}`,
 };

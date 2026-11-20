@@ -60,4 +60,4 @@ function createCueSpeaker({ speakText, record = () => {}, corrections = loadCorr
   };
 }
 
-module.exports = { loadCorrections, cueBlockedBy, createCueSpeaker };
+module.exports = { loadCorrections, cueBlockedBy, createCueSpeaker, DEFAULT_SCENARIOS_DIR };

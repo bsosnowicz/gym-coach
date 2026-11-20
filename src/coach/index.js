@@ -18,6 +18,7 @@ const {
 } = require("./prompts");
 const { yesIntent, noIntent, READY_WORDS, STT_HALLUCINATIONS, COURTESY_WORDS } = require("./speech-words");
 const { createMarkers, parsePlanMarker } = require("./markers");
+const { loadCameraScenarios, cameraFor, VIEW_NOTES } = require("./camera-scenarios");
 
 const severityRank = (severity) => SEVERITIES.indexOf(severity);
 
@@ -38,14 +39,44 @@ const unrefTimer = (fn, ms) => {
 // injuries: src/coach/injury-store.js, or null without Supabase (the session still adapts).
 // workoutLog: src/coach/workout-log.js, or null without Supabase.
 // plans: src/coach/plan-store.js (profile and weekly plans), or null without Supabase.
+// cameraScenarios: src/coach/camera-scenarios.js — which exercise the camera can count.
 function createCoach({
   voiceId, language = "pl", catalog = buildCatalog(), engine = require("../engine"),
   injuries: injuryStore = null, workoutLog = null, plans: planStore = null,
+  cameraScenarios = loadCameraScenarios(),
 }) {
+  // The camera scenario of the exercise in progress (or next, during a rest), or null.
+  const cameraOf = (item) => (item ? cameraFor(catalog.get(item.id), cameraScenarios) : null);
+
   // The workout as the page shows it; sent on every change and to a page that (re)joins.
+  // camera: what the page's camera watches and counts now.
   function workoutEvent(session) {
     const { plan, runner } = session.coachState;
-    return { stage: "workout", workout: plan ? { plan, progress: runner.snapshot() } : null };
+    if (!plan) return { stage: "workout", workout: null };
+    const progress = runner.snapshot();
+    const camera = progress.phase === "done" ? null : cameraOf(plan.exercises[progress.exerciseIndex]);
+    return { stage: "workout", workout: { plan, progress, camera } };
+  }
+
+  // Where the camera goes for a new exercise, said once per change of side and
+  // only while the camera is on; "" otherwise.
+  function cameraNote(session, item) {
+    const { camera } = session.coachState;
+    const target = cameraOf(item);
+    if (!camera.on || !target || camera.view === target.view) return "";
+    camera.view = target.view;
+    engine.record(session, "camera.view_asked", { view: target.view, id: item.id });
+    return VIEW_NOTES[target.view];
+  }
+
+  // A bare "gotowe" during a set takes the reps the camera counted in this very
+  // set; a number the user said always wins.
+  function withCameraReps(state, intent) {
+    const { runner, cameraReps } = state;
+    if (intent.reps != null || runner.progress.phase !== "set" || !cameraReps) return intent;
+    const { exerciseIndex, setIndex } = runner.progress;
+    if (cameraReps.exerciseIndex !== exerciseIndex || cameraReps.setIndex !== setIndex || cameraReps.count < 1) return intent;
+    return { ...intent, reps: cameraReps.count, source: "camera" };
   }
 
   // The weekly plan for the calendar; sent when it changes and to a page that (re)joins.
@@ -358,6 +389,7 @@ function createCoach({
       },
       canSpeakNow: () => !cueBlockedBy(session),
       finishNote: () => session.coachState.variantNote || "",
+      cameraNote: (item) => cameraNote(session, item),
       setTimer: unrefTimer,
     });
   }
@@ -402,6 +434,10 @@ function createCoach({
         history: setup.history || [],
         lastWorkout: setup.history?.[0] || null,
         startedAt: new Date().toISOString(),
+        // on: the page's camera is analysing (POST /api/session/camera); view: the side last asked for.
+        camera: { on: false, view: null },
+        // { exerciseIndex, setIndex, count }: reps the camera counted in a set (POST /api/session/reps).
+        cameraReps: null,
         changes: [],
         // "other" maps to no exercise: the model knows about it, the filter cannot use it.
         avoid: injuries.filter((injury) => injury.body_part !== "other")
@@ -487,10 +523,35 @@ function createCoach({
       const ready = (runner?.progress.phase === "ready_set" && (yesIntent(userText) || READY_WORDS.test(normalizeWords(userText).join(" "))))
         // "Koniec przerwy" during a rest between sets: the next set, not the end of the session.
         || (["rest", "ready_set"].includes(runner?.progress.phase) && breakOverIntent(userText));
-      const intent = runner && (advanceIntent(userText) || (ready ? { reps: null, kg: null } : null));
+      const said = runner && (advanceIntent(userText) || (ready ? { reps: null, kg: null } : null));
+      const intent = said && withCameraReps(state, said);
       if (!intent || !runner.advance(intent)) return undefined;
       engine.record(session, "workout.advance", { text: userText, reps: intent.reps });
       return { handled: true };
+    },
+
+    // The page's camera started or stopped analysing; a camera switched on again
+    // hears where to stand at the next new exercise. A count cut off by the
+    // camera going out is partial: it is dropped, not taken as the set.
+    cameraSwitched(session, on) {
+      const state = session.coachState;
+      const { camera } = state;
+      if (camera.on === on) return;
+      camera.on = on;
+      camera.view = null;
+      if (!on) state.cameraReps = null;
+      engine.record(session, on ? "camera.on" : "camera.off", {});
+    },
+
+    // Reps the page counted in a set; kept only for the set in progress.
+    cameraReps(session, { count, exerciseIndex, setIndex }) {
+      const state = session.coachState;
+      const progress = state.runner?.progress;
+      if (!progress || progress.phase !== "set" || progress.exerciseIndex !== exerciseIndex || progress.setIndex !== setIndex) {
+        return false;
+      }
+      state.cameraReps = { exerciseIndex, setIndex, count };
+      return true;
     },
 
     onPause: (session) => session.coachState.runner?.pause(),
@@ -553,7 +614,7 @@ function createCoach({
         return;
       }
       if (state.advanceAfterTurn) {
-        const result = state.advanceAfterTurn;
+        const result = withCameraReps(state, state.advanceAfterTurn);
         state.advanceAfterTurn = false;
         state.runner.advance(result);
         return;
