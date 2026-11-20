@@ -56,6 +56,7 @@
 
   { "id": "Bent_Over_Barbell_Row", "name": "wiosłowanie sztangą w opadzie", "pattern": "horizontal_pull", "hard": ["lower_back"] },
   { "id": "One-Arm_Dumbbell_Row", "name": "wiosłowanie hantlą jednorącz", "pattern": "horizontal_pull", "needs": ["bench"], "soft": ["lower_back"] },
+  { "id": "Bent_Over_Two-Dumbbell_Row", "name": "wiosłowanie hantlami w opadzie", "pattern": "horizontal_pull", "soft": ["lower_back"] },
   { "id": "Seated_Cable_Rows", "name": "przyciąganie linki wyciągu siedząc", "pattern": "horizontal_pull" },
   { "id": "Inverted_Row", "name": "wiosłowanie australijskie", "pattern": "horizontal_pull", "equipment": "body_only", "needs": ["rack"], "soft": ["wrist"] },
   { "id": "T-Bar_Row_with_Handle", "name": "wiosłowanie T-sztangą", "pattern": "horizontal_pull", "hard": ["lower_back"] },

@@ -31,9 +31,11 @@ const { createGroqWhisperStt } = require("./src/adapters/stt/groq-whisper");
 const { createLiveAvatarLite } = require("./src/adapters/avatar/liveavatar-lite");
 const { createBrowserVoice } = require("./src/adapters/avatar/browser-voice");
 const { createCoach, holdPainDuringBreak } = require("./src/coach");
+const { guardSessionEnd } = require("./src/coach/end-guard");
 const { createCueSpeaker } = require("./src/coach/cues");
 const { createInjuryStore } = require("./src/coach/injury-store");
 const { createWorkoutLog } = require("./src/coach/workout-log");
+const { createPlanStore } = require("./src/coach/plan-store");
 const { diffUsage, usageLine } = require("./src/usage");
 
 const HOST = process.env.HOST || "127.0.0.1";
@@ -62,6 +64,7 @@ const supabaseConfig = {
 };
 const injuries = createInjuryStore(supabaseConfig);
 const workoutLog = createWorkoutLog(supabaseConfig);
+const plans = createPlanStore(supabaseConfig);
 // Said once at start: without it a missing key looked exactly like a working database.
 console.log(injuries
   ? `Supabase: zapis włączony (${new URL(supabaseConfig.url).host}, użytkownik „${supabaseConfig.userId}”).`
@@ -69,12 +72,12 @@ console.log(injuries
 
 // Break and end of the session (voice and buttons) wrap the app's coach;
 // texts can be passed here to fit the app ("trening", "lekcja").
-const coach = holdPainDuringBreak(engine.withSessionControl(createCoach({ voiceId: process.env.ELEVENLABS_VOICE_ID, injuries, workoutLog }), {
+const coach = holdPainDuringBreak(guardSessionEnd(engine.withSessionControl(createCoach({ voiceId: process.env.ELEVENLABS_VOICE_ID, injuries, workoutLog, plans }), {
   texts: {
     pause: "Dobrze, robimy przerwę w treningu. Powiedz, kiedy chcesz kontynuować.",
     farewell: "Dzięki za wspólną rozmowę o treningu. Do zobaczenia!",
   },
-}));
+})));
 
 // Built on first use, so the server starts (and says what is missing) even
 // with an incomplete .env.
@@ -154,7 +157,13 @@ const ROUTES = {
     sendJson(res, 200, { camera: YOLO_POSE_WS_URL ? { yoloUrl: YOLO_POSE_WS_URL } : null });
   },
 
-  "POST /api/session/start": async (_req, res, user) => {
+  // The weekly plan for the calendar before any session; null without Supabase or a plan.
+  "GET /api/plan": async (_req, res) => {
+    const [week, profile] = await Promise.all([plans?.activePlan() ?? null, plans?.profile() ?? null]);
+    sendJson(res, 200, { week, profile, saving: Boolean(plans) });
+  },
+
+  "POST /api/session/start": async (req, res, user) => {
     sessionStartRateLimit(user.id);
     const usageAtStart = usageSnapshot();
     const { llm, tts, avatar } = getAdapters();
@@ -166,8 +175,13 @@ const ROUTES = {
       coach,
       // Read before the greeting, so the plan and the first question already know them.
       setup: await (async () => {
-        const [active, history] = await Promise.all([injuries?.active() ?? [], workoutLog?.recent() ?? []]);
-        return { injuries: active, history };
+        const body = await readJsonBody(req).catch(() => ({}));
+        const [active, history, profile, weekPlan] = await Promise.all([
+          injuries?.active() ?? [], workoutLog?.recent() ?? [], plans?.profile() ?? null, plans?.activePlan() ?? null,
+        ]);
+        // No weekly plan yet: the interview first; "Nowy plan / wywiad" asks for it on purpose.
+        const mode = body?.mode === "interview" || !weekPlan ? "interview" : "training";
+        return { injuries: active, history, profile, weekPlan, mode };
       })(),
       options: {
         firstTokenTimeoutMs: envNumber("LLM_FIRST_TOKEN_TIMEOUT_MS", 8000),
@@ -200,6 +214,8 @@ const ROUTES = {
     // The app's own state (the workout) for a page that joins or rejoins the stream.
     const domain = session.coach.workoutEvent?.(session);
     if (domain) res.write(`data: ${JSON.stringify(domain)}\n\n`);
+    const week = session.coach.weekEvent?.(session);
+    if (week) res.write(`data: ${JSON.stringify(week)}\n\n`);
     const heartbeat = setInterval(() => {
       if (res.writableEnded || res.destroyed) return clearInterval(heartbeat);
       res.write(": ping\n\n");

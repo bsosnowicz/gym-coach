@@ -24,6 +24,10 @@ const FOCUS_GROUPS = {
   back: { name: "plecy", muscles: ["lats", "middle back", "lower back", "traps"] },
   arms: { name: "ramiona", muscles: ["biceps", "triceps", "forearms"] },
   core: { name: "brzuch i core", muscles: ["abdominals", "lower back"] },
+  // Day types of a weekly split (src/coach/programming.js).
+  upper: { name: "góra ciała", muscles: ["chest", "lats", "middle back", "shoulders", "traps", "biceps", "triceps"] },
+  push: { name: "push: klatka, barki, triceps", muscles: ["chest", "shoulders", "triceps"] },
+  pull: { name: "pull: plecy, biceps", muscles: ["lats", "middle back", "traps", "biceps"] },
 };
 // What a focus value means: its name and the muscles that count as "on focus".
 const focusOf = (focus) => FOCUS_GROUPS[focus] || (FOCUS_MUSCLES[focus] ? { name: FOCUS_MUSCLES[focus], muscles: [focus.replace("_", " ")] } : null);
@@ -116,7 +120,8 @@ function filtersFor({ equipment, level }, { avoid = [], missing = [] } = {}) {
 // history: earlier workouts from the journal, newest first (progression, scheme).
 // fresh: a new plan even when a scheme exists; tired: the muscles have not
 // recovered, so no step up in weight.
-function planWorkout(catalog, { goal, level, equipment, minutes, focus = null }, { avoid = [], history = [], fresh = false, tired = false } = {}) {
+// focusShare: the part of the plan on the focus; a split day (push, legs…) is all focus.
+function planWorkout(catalog, { goal, level, equipment, minutes, focus = null }, { avoid = [], history = [], fresh = false, tired = false, focusShare = FOCUS_SHARE } = {}) {
   if (!GOALS.includes(goal)) throw new Error(`Plan: nieznany cel „${goal}”`);
   if (!EQUIPMENT_PRESETS[equipment]) throw new Error(`Plan: nieznany sprzęt „${equipment}”`);
   const prescription = prescriptionFor(goal, level);
@@ -168,7 +173,7 @@ function planWorkout(catalog, { goal, level, equipment, minutes, focus = null },
   const target = focusOf(focus);
   if (target && !scheme) {
     const onFocus = (exercise) => exercise.primaryMuscles.some((muscle) => target.muscles.includes(muscle));
-    const want = Math.min(wanted, Math.max(FOCUS_MIN_EXERCISES, Math.ceil(wanted * FOCUS_SHARE)));
+    const want = Math.min(wanted, Math.max(FOCUS_MIN_EXERCISES, Math.ceil(wanted * focusShare)));
     // Only strength patterns of the slots: mountain climbers hit the quads, but are no leg day.
     const slotOf = (pattern) => SLOTS.findIndex((patterns) => patterns.includes(pattern));
     const pool = candidates.filter((exercise) => onFocus(exercise) && slotOf(exercise.pattern) >= 0);
@@ -186,7 +191,9 @@ function planWorkout(catalog, { goal, level, equipment, minutes, focus = null },
     }
     focusAvailable = picked.length > 0;
     focusLimited = picked.length > 0 && picked.length < want;
-    const rest = chosen.filter((exercise) => !onFocus(exercise)).slice(0, Math.max(0, wanted - picked.length));
+    // A split day (share 1: push, legs…) is not padded with other muscles: a squat
+    // on a pull day takes the legs' rest away before their own day.
+    const rest = focusShare >= 1 && picked.length ? [] : chosen.filter((exercise) => !onFocus(exercise)).slice(0, Math.max(0, wanted - picked.length));
     chosen.splice(0, chosen.length, ...picked, ...rest);
   }
 
