@@ -79,6 +79,8 @@ export default function CameraPanel({ config, session, workout = null, showAngle
   // One counter per set of an exercise on camera; a new set starts from zero.
   const setKey = target && progress?.phase === "set" ? `${scenario}:${progress.exerciseIndex}:${progress.setIndex}` : null;
   const counterRef = useRef(null);
+  // Scenarios already reported as unknown to the YOLO service, so the log says it once.
+  const staleRef = useRef(new Set());
 
   const loopRef = useRef(null);
   if (!loopRef.current) {
@@ -161,6 +163,11 @@ export default function CameraPanel({ config, session, workout = null, showAngle
     const current = counterRef.current;
     if (!current || analysis.scenario !== current.scenario) return;
     if (latest.current.showAngles) trackAngle(analysis, current);
+    const unknown = current.counter.unknownGates(analysis);
+    if (unknown.length && !staleRef.current.has(current.scenario)) {
+      staleRef.current.add(current.scenario);
+      log(latest.current.t.staleYolo(current.scenario, unknown));
+    }
     if (!current.counter.handle(analysis)) return;
     const count = current.counter.count;
     setReps(count);

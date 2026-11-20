@@ -16,6 +16,7 @@ export const CAMERA_TEXTS = {
   yoloUnavailable: "Analiza sylwetki niedostępna — widzisz sam podgląd, rozmowa działa normalnie.",
   yoloLost: "Połączenie z analizą sylwetki zerwane — widzisz sam podgląd.",
   failed: (message) => `Kamera: ${message}`,
+  staleYolo: (scenario, gates) => `YOLO nie zna bramek pozycji scenariusza „${scenario}” (${gates.join(", ")}) — liczę bez nich. Zrestartuj serwis YOLO, żeby wczytał scenariusze.`,
   view: (view) => (view === "front" ? "Kamera z przodu" : "Kamera z boku"),
   reps: (count) => `powtórzenia: ${count}`,
   angles: ({ name, value = null, min = null, max = null, low, high }) => {

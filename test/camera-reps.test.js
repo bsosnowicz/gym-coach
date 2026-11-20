@@ -85,6 +85,18 @@ test("Licznik z bramką: łokieć zgięty i wyprostowany przy niespełnionej poz
   assert.equal(reps.count, 1, "w podporze liczy");
 });
 
+test("Licznik: YOLO bez reguły bramki (serwis sprzed zmiany) — liczy bez niej i mówi, której nie zna", async () => {
+  const { createRepCounter } = await import("../public/camera/rep-counter.js");
+  let clock = 0;
+  const reps = createRepCounter({ rule: "elbow_angle", start: "high", low: 100, high: 150, gates: ["not_in_plank"], now: () => clock });
+  const stale = (value) => ({ measurements: [{ id: "elbow_angle", visible: true, value }], deviations: [] });
+  for (const value of [170, 90, 160]) { clock += 300; reps.handle(stale(value)); }
+  assert.equal(reps.count, 1);
+  assert.deepEqual(reps.unknownGates(stale(170)), ["not_in_plank"]);
+  assert.deepEqual(reps.unknownGates({ measurements: [], deviations: [] }), [], "bez sylwetki nic nie wiadomo");
+  assert.deepEqual(reps.unknownGates({ measurements: [{ id: "elbow_angle" }, { id: "not_in_plank" }] }), []);
+});
+
 test("Licznik: wyciskanie zaczyna nisko (start: low) — przy barkach → ręce proste → przy barkach", async () => {
   const { reps, frames } = await counter({ rule: "elbow_angle", start: "low", low: 110, high: 150 });
   frames(85, 120, 160, 170, 140, 90);

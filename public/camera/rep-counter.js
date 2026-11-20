@@ -12,6 +12,9 @@
 // (a push-up only with the torso level). A frame where one of them is not
 // visible or flags a deviation changes nothing either: the elbow bends the
 // same way in an overhead press, and a false rep is worse than a missed one.
+// A gate the YOLO service does not measure at all (started before the rule
+// was added) cannot be checked: the frame counts without it, and the panel
+// says to restart the service (unknownGates).
 
 export function createRepCounter({ rule, start = "high", low, high, gates = [], minRepMs = 600, now = () => performance.now() }) {
   let count = 0;
@@ -20,11 +23,19 @@ export function createRepCounter({ rule, start = "high", low, high, gates = [], 
   let lastRepAt = -Infinity;
   const atStart = (value) => (start === "high" ? value >= high : value <= low);
   const atFar = (value) => (start === "high" ? value <= low : value >= high);
-  const inPosition = (analysis) => gates.every((id) => analysis.measurements?.find((item) => item.id === id)?.visible
-    && !analysis.deviations?.some((deviation) => deviation.id === id));
+  const inPosition = (analysis) => gates.every((id) => {
+    const gate = analysis.measurements?.find((item) => item.id === id);
+    return !gate || (gate.visible && !analysis.deviations?.some((deviation) => deviation.id === id));
+  });
 
   return {
     get count() { return count; },
+
+    // Gates missing from a result that has the rep angle: the service does not know them.
+    unknownGates(analysis) {
+      if (!analysis?.measurements?.some((item) => item.id === rule)) return [];
+      return gates.filter((id) => !analysis.measurements.some((item) => item.id === id));
+    },
 
     reset() {
       count = 0;
