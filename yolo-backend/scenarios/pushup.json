@@ -1,0 +1,19 @@
+{
+  "id": "pushup",
+  "label": "Pompka",
+  "description": "Pompki i ich odmiany, kamera z boku. Powtórzenie liczy kąt w łokciu: ręce proste → dół → ręce proste.",
+  "view": "side",
+  "exercises": ["Pushups", "Push-Ups_With_Feet_Elevated"],
+  "rep": { "rule": "elbow_angle", "start": "high", "low": 100, "high": 150 },
+  "rules": [
+    {
+      "id": "elbow_angle",
+      "label": "kąt w łokciu",
+      "type": "angle",
+      "points": {
+        "left": ["left_shoulder", "left_elbow", "left_wrist"],
+        "right": ["right_shoulder", "right_elbow", "right_wrist"]
+      }
+    }
+  ]
+}
