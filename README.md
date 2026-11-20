@@ -239,6 +239,13 @@ i restart serwisu YOLO oraz `npm start` (oba czytają scenariusze przy starcie).
 Sprawdzenie: przysiad w planie, Włącz kamerę, po rozgrzewce trener prosi o kamerę z boku;
 zrób kilka przysiadów — panel liczy; „gotowe” — trener podaje liczbę z kamery.
 
+**Test kamery bez sesji:** http://127.0.0.1:3001/app/#test-kamery (link „Test kamery (bez sesji)”
+na stronie głównej, gdy sesja nie trwa). Bez awatara i modelu, więc bez kosztów: wybór ćwiczenia
+z listy scenariuszy (`/api/config` → `camera.scenarios`), od razu „seria”, licznik, a pod nim kąt
+na żywo, najniższy i najwyższy w serii oraz progi; „Nowa seria” zeruje. Do strojenia progów:
+dół ruchu musi schodzić poniżej progu „dół”, pozycja startowa — powyżej „góra” (wyciskanie
+odwrotnie). Po zmianie `rep` w JSON wystarczy restart `npm start`.
+
 ## Sprawdzenie
 
 ```bash

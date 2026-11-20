@@ -33,6 +33,7 @@ const { createBrowserVoice } = require("./src/adapters/avatar/browser-voice");
 const { createCoach, holdPainDuringBreak } = require("./src/coach");
 const { guardSessionEnd } = require("./src/coach/end-guard");
 const { createCueSpeaker } = require("./src/coach/cues");
+const { loadCameraScenarios } = require("./src/coach/camera-scenarios");
 const { createInjuryStore } = require("./src/coach/injury-store");
 const { createWorkoutLog } = require("./src/coach/workout-log");
 const { createPlanStore } = require("./src/coach/plan-store");
@@ -160,8 +161,10 @@ function closeAbandonedSession(session) {
 
 const ROUTES = {
   // What the page needs before a session; camera: null keeps the camera module unloaded.
+  // scenarios: the exercises the camera counts, for the camera test page (#test-kamery).
   "GET /api/config": async (_req, res) => {
-    sendJson(res, 200, { camera: YOLO_POSE_WS_URL ? { yoloUrl: YOLO_POSE_WS_URL } : null });
+    const scenarios = loadCameraScenarios().map(({ scenario, label, angle, view, rep }) => ({ scenario, label, angle, view, rep }));
+    sendJson(res, 200, { camera: YOLO_POSE_WS_URL ? { yoloUrl: YOLO_POSE_WS_URL, scenarios } : null });
   },
 
   // The weekly plan for the calendar before any session; null without Supabase or a plan.

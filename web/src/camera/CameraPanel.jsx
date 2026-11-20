@@ -47,10 +47,12 @@ function describeAnalysis(analysis, t) {
 
 // session: from useSession(); the corrections go into its conversation.
 // workout: the "workout" event of the coach ({ plan, progress, camera }) or null.
-export default function CameraPanel({ config, session, workout = null, texts = {} }) {
+// showAngles: the measured angle, its lowest and highest in the set and the
+// thresholds — for tuning a scenario on the camera test page.
+export default function CameraPanel({ config, session, workout = null, showAngles = false, texts = {} }) {
   const t = { ...CAMERA_TEXTS, ...texts };
-  const latest = useRef({ t, session });
-  latest.current = { t, session };
+  const latest = useRef({ t, session, showAngles });
+  latest.current = { t, session, showAngles };
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const cameraRef = useRef(null);
@@ -66,6 +68,8 @@ export default function CameraPanel({ config, session, workout = null, texts = {
   // Whether YOLO answers: only then does the coach ask where to put the camera.
   const [analysing, setAnalysing] = useState(false);
   const [reps, setReps] = useState(null);
+  // { value, min, max } of the rep angle in this set (showAngles only).
+  const [angle, setAngle] = useState(null);
 
   const target = workout?.camera || null;
   const scenario = target?.scenario || DEFAULT_SCENARIO;
@@ -132,9 +136,10 @@ export default function CameraPanel({ config, session, workout = null, texts = {
 
   useEffect(() => {
     counterRef.current = setKey
-      ? { scenario, exerciseIndex: progress.exerciseIndex, setIndex: progress.setIndex, counter: createRepCounter(target.rep) }
+      ? { scenario, rule: target.rep.rule, exerciseIndex: progress.exerciseIndex, setIndex: progress.setIndex, counter: createRepCounter(target.rep) }
       : null;
     setReps(setKey ? 0 : null);
+    setAngle(null);
   }, [setKey]);
 
   // The coach hears when the analysis starts or stops, also for a session started after the camera.
@@ -142,9 +147,21 @@ export default function CameraPanel({ config, session, workout = null, texts = {
     if (session.running && session.sessionId()) sendCamera(session.sessionId(), analysing);
   }, [analysing, session.running]);
 
+  function trackAngle(analysis, current) {
+    const measured = analysis.measurements?.find((item) => item.id === current.rule);
+    if (!measured?.visible || typeof measured.value !== "number") {
+      setAngle((old) => (old ? { ...old, value: null } : old));
+      return;
+    }
+    const value = measured.value;
+    setAngle((old) => ({ value, min: Math.min(old?.min ?? value, value), max: Math.max(old?.max ?? value, value) }));
+  }
+
   function countReps(analysis) {
     const current = counterRef.current;
-    if (!current || analysis.scenario !== current.scenario || !current.counter.handle(analysis)) return;
+    if (!current || analysis.scenario !== current.scenario) return;
+    if (latest.current.showAngles) trackAngle(analysis, current);
+    if (!current.counter.handle(analysis)) return;
     const count = current.counter.count;
     setReps(count);
     const sessionId = latest.current.session.sessionId();
@@ -262,6 +279,11 @@ export default function CameraPanel({ config, session, workout = null, texts = {
       {analysing && target && (
         <p className="camera-reps" aria-live="polite">
           {`${t.view(target.view)}${reps === null ? "" : ` · ${t.reps(reps)}`}`}
+        </p>
+      )}
+      {showAngles && analysing && target && (
+        <p className="camera-angles">
+          {t.angles({ name: target.angle || target.rep.rule, ...angle, low: target.rep.low, high: target.rep.high })}
         </p>
       )}
     </section>

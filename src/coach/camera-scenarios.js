@@ -9,7 +9,9 @@ const fs = require("fs");
 const path = require("path");
 const { DEFAULT_SCENARIOS_DIR } = require("./cues");
 
-// [{ scenario, view, rep, exercises, patterns }]; scenarios without a rep (standing) are left out.
+// [{ scenario, label, angle, view, rep, exercises, patterns }]; scenarios without a
+// rep (standing) are left out. label and angle name the exercise and the measured
+// angle for the camera test page.
 function loadCameraScenarios(dir = DEFAULT_SCENARIOS_DIR) {
   if (!fs.existsSync(dir)) return [];
   return fs.readdirSync(dir).filter((name) => name.endsWith(".json")).sort()
@@ -17,6 +19,8 @@ function loadCameraScenarios(dir = DEFAULT_SCENARIOS_DIR) {
     .filter((scenario) => scenario.rep && scenario.view)
     .map((scenario) => ({
       scenario: scenario.id,
+      label: scenario.label || scenario.id,
+      angle: (scenario.rules || []).find((rule) => rule.id === scenario.rep.rule)?.label || scenario.rep.rule,
       view: scenario.view,
       rep: scenario.rep,
       exercises: scenario.exercises || [],
