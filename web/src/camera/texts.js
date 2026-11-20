@@ -35,6 +35,9 @@ export const CAMERA_TEST_TEXTS = {
   back: "Wróć do treningu",
   noCamera: "Kamera jest wyłączona na serwerze: ustaw YOLO_POSE_WS_URL w .env i uruchom serwer ponownie.",
   loading: "Wczytuję konfigurację…",
+  noScenarios: "Serwer nie podał listy ćwiczeń kamery — działa w starszej wersji. Zatrzymaj `npm start` (Ctrl+C), uruchom ponownie i odśwież stronę.",
   link: "Test kamery (bez sesji)",
   log: "Dziennik",
+  withCoach: "Test kamery z trenerem",
+  startWithCoach: "Start testu",
 };

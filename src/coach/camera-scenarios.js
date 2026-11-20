@@ -36,10 +36,26 @@ function cameraFor(exercise, scenarios) {
   return found ? { scenario: found.scenario, view: found.view, rep: found.rep } : null;
 }
 
+// The exercise a camera test runs for a scenario (an item of loadCameraScenarios):
+// its own first one, else the pattern's with the least equipment.
+const EQUIPMENT_ORDER = ["body_only", "dumbbell", "kettlebell", "barbell"];
+function testExercise(item, catalog) {
+  const own = item.exercises.map((id) => catalog.get(id)).find(Boolean);
+  if (own) return own;
+  const rank = (exercise) => (EQUIPMENT_ORDER.includes(exercise.equipment) ? EQUIPMENT_ORDER.indexOf(exercise.equipment) : EQUIPMENT_ORDER.length);
+  return catalog.all.filter((exercise) => item.patterns.includes(exercise.pattern)).sort((a, b) => rank(a) - rank(b))[0] || null;
+}
+
 // Said when the next exercise needs the camera on another side.
 const VIEW_NOTES = {
   side: "Ustaw kamerę z boku, tak żeby było widać całą sylwetkę.",
   front: "Ustaw kamerę z przodu, tak żeby było widać całą sylwetkę.",
 };
 
-module.exports = { loadCameraScenarios, cameraFor, VIEW_NOTES };
+// A rep counted aloud by the coach; past twenty the digits, which the TTS reads.
+const COUNT_WORDS = ["zero", "jeden", "dwa", "trzy", "cztery", "pięć", "sześć", "siedem", "osiem", "dziewięć", "dziesięć",
+  "jedenaście", "dwanaście", "trzynaście", "czternaście", "piętnaście", "szesnaście", "siedemnaście", "osiemnaście",
+  "dziewiętnaście", "dwadzieścia"];
+const countWord = (n) => COUNT_WORDS[n] || String(n);
+
+module.exports = { loadCameraScenarios, cameraFor, testExercise, VIEW_NOTES, countWord };

@@ -186,6 +186,12 @@ const ROUTES = {
       // Read before the greeting, so the plan and the first question already know them.
       setup: await (async () => {
         const body = await readJsonBody(req).catch(() => ({}));
+        // The camera test: one exercise, nothing read from or written to the database.
+        if (body?.mode === "camera_test") {
+          const scenario = requireShortText(body.scenario, "scenario", 64);
+          if (!loadCameraScenarios().some((item) => item.scenario === scenario)) throw new HttpError(`Nieznane ćwiczenie kamery: ${scenario}.`, 400);
+          return { mode: "camera_test", scenario };
+        }
         const [active, history, profile, weekPlan] = await Promise.all([
           injuries?.active() ?? [], workoutLog?.recent() ?? [], plans?.profile() ?? null, plans?.activePlan() ?? null,
         ]);

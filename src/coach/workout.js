@@ -419,6 +419,12 @@ function createWorkoutRunner(plan, {
     // Returns false when there is nothing to move on from (no plan step, done).
     advance({ reps = null, kg = null, source = null } = {}) {
       if (progress.phase === "ready") {
+        // A plan without a warm-up (warmup: null, the camera test) starts with its first set.
+        if (plan.warmup === null) {
+          say(firstSet());
+          startSet();
+          return true;
+        }
         progress.phase = "warmup";
         record("workout.warmup", {});
         say(SAY.warmup());

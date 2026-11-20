@@ -21,6 +21,17 @@ export default function CameraTest({ config }) {
     [target, setIndex],
   );
 
+  // A server started before the scenario list existed sends none.
+  if (!scenarios.length) {
+    return (
+      <main className="app">
+        <h1>{t.title}</h1>
+        <p className="hint">{t.noScenarios}</p>
+        <a className="btn" href="#">{t.back}</a>
+      </main>
+    );
+  }
+
   return (
     <main className="app">
       <h1>{t.title}</h1>

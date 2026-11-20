@@ -5,6 +5,7 @@ import { RestOverlay } from "./workout/RestOverlay.jsx";
 import { WeekCalendar } from "./workout/WeekCalendar.jsx";
 import { WorkoutPanel } from "./workout/WorkoutPanel.jsx";
 import { CAMERA_TEST_TEXTS } from "./camera/texts.js";
+import { CameraTestStart } from "./camera/CameraTestStart.jsx";
 
 // The mascot's joy after a finished set or workout (voice mode): one hop and a wave.
 const CHEER_MS = 2000;
@@ -61,6 +62,8 @@ export function App() {
   // receivedAt: the rest left is counted from the moment the state arrived.
   const [workout, setWorkout] = useState({ workout: null, receivedAt: 0 });
   const [cheer, setCheer] = useState(false);
+  // The kind of the session (training, interview, camera_test), from its "week_plan" event.
+  const [mode, setMode] = useState(null);
   const cheerTimer = useRef(null);
   // The last progress seen, read in the event handler: two events may come before a render.
   const lastProgress = useRef(null);
@@ -78,6 +81,9 @@ export function App() {
       setWorkout({ workout: data.workout, receivedAt: Date.now() });
     }
     if (data.stage === "week_plan") {
+      setMode(data.mode);
+      // A camera test has no plan: the calendar keeps the user's week.
+      if (data.mode === "camera_test") return;
       setPlan((old) => ({ ...old, week: data.week }));
       if (data.week) log(`Plan tygodnia: ${data.week.split}, wariant ${data.week.variant || "A"}${data.mode === "interview" ? " (wywiad)" : ""}.`);
     }
@@ -100,11 +106,14 @@ export function App() {
           <WeekCalendar week={plan.week} saving={plan.saving} busy={session.phase !== "idle"} onNewPlan={() => start({ mode: "interview" })} />
           {config?.camera && (
             <Suspense fallback={null}>
-              <CameraPanel config={config.camera} session={session} workout={workout.workout} />
+              <CameraPanel config={config.camera} session={session} workout={workout.workout} showAngles={session.running && mode === "camera_test"} />
             </Suspense>
           )}
           {/* Not during a session: leaving this page would unmount the avatar's video. */}
           {config?.camera && session.phase === "idle" && <a className="hint" href={CAMERA_TEST_HASH}>{CAMERA_TEST_TEXTS.link}</a>}
+          {config?.camera?.scenarios && (
+            <CameraTestStart scenarios={config.camera.scenarios} start={start} busy={session.phase !== "idle"} />
+          )}
         </>
       )}
     </SessionScreen>

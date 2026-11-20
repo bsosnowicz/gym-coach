@@ -83,6 +83,9 @@ const { endSession } = require("../src/engine/session");
 const engine = require("../src/engine");
 const { fakeLlm, liveSession, tick } = require("./helpers");
 
+// The count said aloud is not awaited by cameraReps: let it finish.
+const settle = async () => { for (let i = 0; i < 12; i += 1) await tick(); };
+
 const goblet = { id: "Goblet_Squat", name: "przysiad goblet", pattern: "squat", equipment: "kettlebell", sets: 2, reps: 10, restS: 60 };
 const press = { id: "Standing_Military_Press", name: "wyciskanie żołnierskie", pattern: "vertical_push", equipment: "barbell", sets: 1, reps: 10, restS: 60 };
 
@@ -115,6 +118,8 @@ test("Kamera w treningu: prośba o ustawienie z boku i z przodu, „gotowe” bi
 
   assert.equal(coach.cameraReps(session, { count: 9, exerciseIndex: 0, setIndex: 1 }), false, "nie ta seria");
   assert.equal(coach.cameraReps(session, { count: 9, exerciseIndex: 0, setIndex: 0 }), true);
+  await settle();
+  assert.equal(spoken().at(-1), "dziewięć", "liczba na głos");
   await say("Gotowe.");
   assert.deepEqual(state.runner.progress.completed[0], { id: "Goblet_Squat", set: 1, reps: 9, seconds: null, kg: null, source: "camera" });
   assert.match(spoken().at(-1), /^Seria zaliczona, kamera naliczyła 9\. Przerwa 60 sekund\.$/);
@@ -123,6 +128,7 @@ test("Kamera w treningu: prośba o ustawienie z boku i z przodu, „gotowe” bi
   assert.equal(state.runner.progress.setIndex, 1);
   assert.doesNotMatch(spoken().at(-1), /Ustaw kamerę/, "ta sama strona — bez prośby");
   coach.cameraReps(session, { count: 6, exerciseIndex: 0, setIndex: 1 });
+  await settle();
   await say("Zrobiłem 9.");
   assert.equal(state.runner.progress.completed[1].reps, 9);
   assert.equal(state.runner.progress.completed[1].source, undefined, "liczba powiedziana wygrywa nad kamerą");
@@ -139,10 +145,62 @@ test("Kamera wyłączona: bez prośby o ustawienie; zgaszona w serii — liczba 
   assert.match(spoken().at(-1), /^Ćwiczenie 1 z 2: przysiad goblet\./);
   coach.cameraSwitched(session, true);
   coach.cameraReps(session, { count: 4, exerciseIndex: 0, setIndex: 0 });
+  await settle();
   coach.cameraSwitched(session, false);
   await say("Gotowe.");
   assert.equal(state.runner.progress.completed[0].reps, 10, "4 to tylko część serii: zostaje liczba z planu");
   assert.equal(state.runner.progress.completed[0].source, undefined);
+  state.runner.stop();
+  await endSession(session);
+});
+
+test("Liczenie na głos: każde nowe powtórzenie z kamery, bez powtórek, nie w czyjejś wypowiedzi i poza historią modelu", async () => {
+  const { session, coach, state, say, spoken } = await cameraWorkout();
+  await say("Gotowe.");
+  await say("Gotowe.");
+  const historyBefore = session.history.length;
+  for (const count of [1, 2, 2, 3]) {
+    coach.cameraReps(session, { count, exerciseIndex: 0, setIndex: 0 });
+    for (let i = 0; i < 12; i += 1) await tick();
+  }
+  assert.deepEqual(spoken().slice(-3), ["jeden", "dwa", "trzy"], "druga dwójka nic nie mówi");
+  assert.equal(session.history.length, historyBefore, "liczby nie trafiają do historii");
+  session.activeTurn = { id: "busy" };
+  coach.cameraReps(session, { count: 4, exerciseIndex: 0, setIndex: 0 });
+  for (let i = 0; i < 12; i += 1) await tick();
+  assert.equal(spoken().at(-1), "trzy", "w trakcie tury modelu cisza");
+  session.activeTurn = null;
+  assert.equal(state.cameraReps.count, 4, "liczba i tak zapamiętana dla „gotowe”");
+  state.runner.stop();
+  await endSession(session);
+});
+
+test("Sesja testowa kamery: powitanie modelu, od razu seria wybranego ćwiczenia, liczenie i wynik, nic w dzienniku", async () => {
+  const saved = [];
+  const calls = [];
+  const replies = ["Cześć, sprawdzamy liczenie powtórzeń z kamery."];
+  const llm = { streamChat: (args) => { calls.push(args.messages); return fakeLlm(replies.shift() || "OK.").streamChat(args); } };
+  const coach = createCoach({ voiceId: "v", catalog, engine, workoutLog: { save: (row) => saved.push(row) } });
+  const live = await liveSession({ llm, coach });
+  const { session, events } = live;
+  session.coachState = coach.createState({ mode: "camera_test", scenario: "squat" });
+  const spoken = () => events.filter((event) => event.stage === "avatar_transcription").map((event) => event.text);
+  coach.cameraSwitched(session, true);
+  await runTurn(session, null);
+  await settle();
+  assert.match(calls[0][0].content, /^Jesteś Gym Coachem[\s\S]*To jest test kamery, nie trening/);
+  const state = session.coachState;
+  assert.equal(state.plan.exercises[0].id, "Bodyweight_Squat", "przysiad bez sprzętu");
+  assert.equal(state.runner.progress.phase, "set", "bez rozgrzewki");
+  assert.match(spoken().at(-1), /^Ustaw kamerę z boku.*Ćwiczenie 1 z 1: przysiad bez obciążenia\. Seria pierwsza z 3, 10 powtórzeń\./);
+  for (const count of [1, 2, 3]) {
+    coach.cameraReps(session, { count, exerciseIndex: 0, setIndex: 0 });
+    await settle();
+  }
+  await runTurn(session, "Gotowe.");
+  await settle();
+  assert.match(spoken().at(-1), /^Seria zaliczona, kamera naliczyła 3\./);
+  assert.deepEqual(saved, [], "test kamery nie trafia do dziennika");
   state.runner.stop();
   await endSession(session);
 });
